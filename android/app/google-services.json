@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1062517539608",
+    "project_id": "gymflow-dalai",
+    "storage_bucket": "gymflow-dalai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1062517539608:android:da297075359b5e4641546d",
+        "android_client_info": {
+          "package_name": "com.example.gymflow"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAReAMQx8F5tAj9Plosx_Fl3E1FXkIiE-U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
