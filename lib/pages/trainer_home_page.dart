@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../features/body_measurements.dart';
 import '../features/client_progress.dart';
 import '../sheets/exercise_sheet.dart';
 import '../widgets/app_card.dart';
@@ -634,10 +635,22 @@ class _TrainerHomePageState extends State<TrainerHomePage> {
                           final selectedClientName = selectedClient['name']?.toString() ?? 'Cliente';
                           final selectedClientEmail = (selectedClient['email'] ?? '').toString().toLowerCase();
 
-                          return ClientProgress(
-                            gymId: widget.gymId,
-                            clientName: selectedClientName,
-                            clientEmail: selectedClientEmail,
+                          return Column(
+                            children: [
+                              ClientProgress(
+                                gymId: widget.gymId,
+                                clientName: selectedClientName,
+                                clientEmail: selectedClientEmail,
+                              ),
+                              const SizedBox(height: 16),
+                              BodyMeasurementsPanel(
+                                gymId: widget.gymId,
+                                filterField: 'userEmail',
+                                filterValue: selectedClientEmail,
+                                title: 'Medidas del cliente',
+                                emptyText: 'Este cliente todavía no tiene medidas corporales registradas.',
+                              ),
+                            ],
                           );
                         },
                       ),

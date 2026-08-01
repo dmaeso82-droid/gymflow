@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../features/body_measurements.dart';
 import '../features/exercise_progress.dart';
 import '../features/personal_records.dart';
 import '../features/recent_workout_history.dart';
@@ -182,6 +183,18 @@ class UserHomePage extends StatelessWidget {
                 'Mostrando solo rutinas asignadas a: $userEmail',
                 style: const TextStyle(color: Colors.white70),
               ),
+            ),
+            const SizedBox(height: 16),
+            BodyMeasurementsPanel(
+              gymId: gymId,
+              filterField: 'userId',
+              filterValue: userId,
+              title: 'Progreso físico',
+              emptyText: 'Todavía no tienes medidas corporales registradas.',
+              allowAdd: true,
+              userId: userId,
+              userName: userName,
+              userEmail: userEmail,
             ),
             const SizedBox(height: 16),
             WeeklySummary(
