@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/section_title.dart';
+import 'weekly_summary.dart';
 
 class ClientProgress extends StatelessWidget {
   final String gymId;
@@ -112,8 +113,18 @@ class ClientProgress extends StatelessWidget {
       );
     }
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: logsRef.where('userEmail', isEqualTo: normalizedEmail).snapshots(),
+    return Column(
+      children: [
+        WeeklySummary(
+          logsRef: logsRef,
+          filterField: 'userEmail',
+          filterValue: normalizedEmail,
+          title: 'Resumen semanal del cliente',
+          emptyText: '$clientName no tiene entrenamientos registrados esta semana.',
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: logsRef.where('userEmail', isEqualTo: normalizedEmail).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const AppCard(
@@ -255,7 +266,9 @@ class ClientProgress extends StatelessWidget {
             ],
           ),
         );
-      },
+          },
+        ),
+      ],
     );
   }
 }

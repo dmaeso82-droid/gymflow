@@ -79,6 +79,161 @@ class _TrainerHomePageState extends State<TrainerHomePage> {
     });
   }
 
+
+  QueryDocumentSnapshot<Map<String, dynamic>>? selectedClientDocument(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> clients,
+  ) {
+    if (selectedClientId == null) return null;
+
+    for (final doc in clients) {
+      if (doc.id == selectedClientId) {
+        return doc;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> editClient(
+    String clientId,
+    Map<String, dynamic> clientData,
+  ) async {
+    final nameController = TextEditingController(text: clientData['name']?.toString() ?? '');
+    final emailController = TextEditingController(text: clientData['email']?.toString() ?? '');
+    final goalController = TextEditingController(text: clientData['goal']?.toString() ?? '');
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          title: const Text('Editar cliente'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppTextField(controller: nameController, label: 'Nombre del cliente'),
+              const SizedBox(height: 12),
+              AppTextField(
+                controller: emailController,
+                label: 'Email del cliente',
+                keyboardType: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 12),
+              AppTextField(controller: goalController, label: 'Objetivo'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final email = emailController.text.trim().toLowerCase();
+                final goal = goalController.text.trim();
+
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Introduce el nombre del cliente.')),
+                  );
+                  return;
+                }
+
+                if (email.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Introduce el email del cliente.')),
+                  );
+                  return;
+                }
+
+                Navigator.pop(dialogContext, {
+                  'name': name,
+                  'email': email,
+                  'goal': goal.isEmpty ? 'Objetivo pendiente' : goal,
+                });
+              },
+              icon: const Icon(Icons.save),
+              label: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    nameController.dispose();
+    emailController.dispose();
+    goalController.dispose();
+
+    if (result == null) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    final clientRef = clientsRef.doc(clientId);
+
+    batch.update(clientRef, {
+      'name': result['name'],
+      'email': result['email'],
+      'goal': result['goal'],
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    final relatedRoutines = await routinesRef.where('clientId', isEqualTo: clientId).get();
+
+    for (final routine in relatedRoutines.docs) {
+      batch.update(routine.reference, {
+        'clientName': result['name'],
+        'clientEmail': result['email'],
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+
+    showSnack('Cliente actualizado. Rutinas asociadas sincronizadas.');
+  }
+
+  Future<void> deleteClient(
+    String clientId,
+    Map<String, dynamic> clientData,
+  ) async {
+    final clientName = clientData['name']?.toString() ?? 'este cliente';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          title: const Text('Eliminar cliente'),
+          content: Text(
+            '¿Seguro que quieres eliminar a $clientName? No se eliminarán sus rutinas ni sus entrenamientos, solo la ficha del cliente.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    await clientsRef.doc(clientId).delete();
+
+    if (selectedClientId == clientId) {
+      setState(() => selectedClientId = null);
+    }
+
+    showSnack('Cliente eliminado. Sus rutinas y entrenamientos se han conservado.');
+  }
+
   Future<void> addRoutine(List<QueryDocumentSnapshot<Map<String, dynamic>>> clients) async {
     final title = routineTitleController.text.trim();
 
@@ -381,6 +536,46 @@ class _TrainerHomePageState extends State<TrainerHomePage> {
                               }).toList(),
                               onChanged: (value) => setState(() => selectedClientId = value),
                             ),
+                          if (clients.isNotEmpty && selectedClientId != null) ...[
+                            const SizedBox(height: 12),
+                            Builder(
+                              builder: (context) {
+                                final selectedDoc = selectedClientDocument(clients);
+                                if (selectedDoc == null) return const SizedBox.shrink();
+                                final selectedClient = selectedDoc.data();
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Objetivo: ${selectedClient['goal'] ?? 'Objetivo pendiente'}',
+                                      style: const TextStyle(color: Colors.white70),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: () => editClient(selectedDoc.id, selectedClient),
+                                            icon: const Icon(Icons.edit),
+                                            label: const Text('Editar cliente'),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: () => deleteClient(selectedDoc.id, selectedClient),
+                                            icon: const Icon(Icons.delete_outline),
+                                            label: const Text('Eliminar cliente'),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
                         ],
                       ),
                     ),

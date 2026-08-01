@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../features/exercise_progress.dart';
 import '../features/personal_records.dart';
 import '../features/recent_workout_history.dart';
+import '../features/weekly_summary.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/header_card.dart';
@@ -181,6 +182,13 @@ class UserHomePage extends StatelessWidget {
                 'Mostrando solo rutinas asignadas a: $userEmail',
                 style: const TextStyle(color: Colors.white70),
               ),
+            ),
+            const SizedBox(height: 16),
+            WeeklySummary(
+              logsRef: logsRef,
+              filterField: 'userId',
+              filterValue: userId,
+              title: 'Resumen semanal',
             ),
             const SizedBox(height: 16),
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
