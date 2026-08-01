@@ -642,6 +642,125 @@ class UserHomePage extends StatelessWidget {
       .doc(gymId)
       .collection('routines');
 
+  CollectionReference<Map<String, dynamic>> get logsRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(gymId)
+      .collection('workout_logs');
+
+  Future<void> saveWorkoutLog({
+    required String routineId,
+    required String routineTitle,
+    required Map<String, dynamic> exercise,
+    required int weight,
+    required int reps,
+  }) async {
+    await logsRef.add({
+      'userId': userId,
+      'userName': userName,
+      'userEmail': userEmail.toLowerCase(),
+      'routineId': routineId,
+      'routineTitle': routineTitle,
+      'exerciseId': exercise['id'] ?? '',
+      'exercise': exercise['name'] ?? 'Ejercicio',
+      'plannedSets': exercise['sets'] ?? '',
+      'plannedReps': exercise['reps'] ?? '',
+      'plannedWeight': exercise['weight'] ?? '',
+      'weight': weight,
+      'reps': reps,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> showWorkoutLogDialog(
+    BuildContext context,
+    String routineId,
+    String routineTitle,
+    List<dynamic> exercises,
+    String exerciseId,
+  ) async {
+    final exercise = exercises
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .firstWhere((item) => item['id'] == exerciseId);
+
+    final weightText = (exercise['weight'] ?? '').toString();
+    final repsText = (exercise['reps'] ?? '').toString();
+    final suggestedWeight = RegExp(r'\d+').firstMatch(weightText)?.group(0) ?? '';
+    final suggestedReps = RegExp(r'\d+').firstMatch(repsText)?.group(0) ?? '';
+
+    final weightController = TextEditingController(text: suggestedWeight);
+    final repsController = TextEditingController(text: suggestedReps);
+
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          title: Text('Registrar ${exercise['name'] ?? 'ejercicio'}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppTextField(
+                controller: weightController,
+                label: 'Peso realizado (kg)',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                controller: repsController,
+                label: 'Repeticiones realizadas',
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                final weight = int.tryParse(weightController.text.trim());
+                final reps = int.tryParse(repsController.text.trim());
+
+                if (weight == null || reps == null || weight < 0 || reps <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Introduce peso y repeticiones válidas.')),
+                  );
+                  return;
+                }
+
+                Navigator.pop(dialogContext, {'weight': weight, 'reps': reps});
+              },
+              icon: const Icon(Icons.save),
+              label: const Text('Guardar serie'),
+            ),
+          ],
+        );
+      },
+    );
+
+    weightController.dispose();
+    repsController.dispose();
+
+    if (result == null) return;
+
+    await saveWorkoutLog(
+      routineId: routineId,
+      routineTitle: routineTitle,
+      exercise: exercise,
+      weight: result['weight']!,
+      reps: result['reps']!,
+    );
+
+    await updateExerciseDone(routineId, exercises, exerciseId, true);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Serie guardada en el historial.')),
+      );
+    }
+  }
+
   Future<void> updateExerciseDone(String routineId, List<dynamic> exercises, String exerciseId, bool done) async {
     final updated = exercises.map((item) {
       final map = Map<String, dynamic>.from(item as Map);
@@ -710,6 +829,13 @@ class UserHomePage extends StatelessWidget {
                       exercises: exercises,
                       trainerMode: false,
                       onToggleExercise: (exerciseId, done) => updateExerciseDone(doc.id, exercises, exerciseId, done),
+                      onLogWorkout: (exerciseId) => showWorkoutLogDialog(
+                        context,
+                        doc.id,
+                        data['title'] ?? 'Sin título',
+                        exercises,
+                        exerciseId,
+                      ),
                     );
                   }).toList(),
                 );
@@ -840,6 +966,7 @@ class RoutineCard extends StatelessWidget {
   final VoidCallback? onAddExercise;
   final void Function(String exerciseId, bool done) onToggleExercise;
   final void Function(String exerciseId)? onDeleteExercise;
+  final void Function(String exerciseId)? onLogWorkout;
 
   const RoutineCard({
     super.key,
@@ -852,6 +979,7 @@ class RoutineCard extends StatelessWidget {
     required this.onToggleExercise,
     this.onAddExercise,
     this.onDeleteExercise,
+    this.onLogWorkout,
   });
 
   @override
@@ -905,10 +1033,22 @@ class RoutineCard extends StatelessWidget {
               return ExerciseTile(
                 exercise: exercise,
                 trainerMode: trainerMode,
-                onToggle: () => onToggleExercise(
-                  exercise['id'] as String,
-                  !(exercise['done'] == true),
-                ),
+                onToggle: () {
+                  final exerciseId = exercise['id'] as String;
+                  if (trainerMode) {
+                    onToggleExercise(
+                      exerciseId,
+                      !(exercise['done'] == true),
+                    );
+                  } else if (onLogWorkout != null) {
+                    onLogWorkout!(exerciseId);
+                  } else {
+                    onToggleExercise(
+                      exerciseId,
+                      !(exercise['done'] == true),
+                    );
+                  }
+                },
                 onDelete: onDeleteExercise == null ? null : () => onDeleteExercise!(exercise['id'] as String),
               );
             }),
