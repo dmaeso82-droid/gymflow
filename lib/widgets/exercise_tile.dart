@@ -6,6 +6,7 @@ class ExerciseTile extends StatelessWidget {
   final Map<String, dynamic> exercise;
   final bool trainerMode;
   final VoidCallback onToggle;
+  final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
   const ExerciseTile({
@@ -13,6 +14,7 @@ class ExerciseTile extends StatelessWidget {
     required this.exercise,
     required this.trainerMode,
     required this.onToggle,
+    this.onEdit,
     this.onDelete,
   });
 
@@ -63,9 +65,20 @@ class ExerciseTile extends StatelessWidget {
           ),
         ),
         trailing: trainerMode
-            ? IconButton(
-                onPressed: onDelete,
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Editar ejercicio',
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit, color: Colors.greenAccent),
+                  ),
+                  IconButton(
+                    tooltip: 'Eliminar ejercicio',
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  ),
+                ],
               )
             : const Icon(Icons.play_circle_outline, color: Colors.white54),
       ),

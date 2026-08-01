@@ -12,7 +12,10 @@ class RoutineCard extends StatelessWidget {
   final List<dynamic> exercises;
   final bool trainerMode;
   final VoidCallback? onAddExercise;
+  final VoidCallback? onEditRoutine;
+  final VoidCallback? onDeleteRoutine;
   final void Function(String exerciseId, bool done) onToggleExercise;
+  final void Function(String exerciseId)? onEditExercise;
   final void Function(String exerciseId)? onDeleteExercise;
   final void Function(String exerciseId)? onLogWorkout;
 
@@ -26,6 +29,9 @@ class RoutineCard extends StatelessWidget {
     required this.trainerMode,
     required this.onToggleExercise,
     this.onAddExercise,
+    this.onEditRoutine,
+    this.onDeleteRoutine,
+    this.onEditExercise,
     this.onDeleteExercise,
     this.onLogWorkout,
   });
@@ -39,7 +45,29 @@ class RoutineCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+              ),
+              if (trainerMode) ...[
+                IconButton(
+                  tooltip: 'Editar rutina',
+                  onPressed: onEditRoutine,
+                  icon: const Icon(Icons.edit, color: Colors.greenAccent),
+                ),
+                IconButton(
+                  tooltip: 'Eliminar rutina',
+                  onPressed: onDeleteRoutine,
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: 6),
           Row(
             children: [
@@ -97,6 +125,7 @@ class RoutineCard extends StatelessWidget {
                     );
                   }
                 },
+                onEdit: onEditExercise == null ? null : () => onEditExercise!(exercise['id'] as String),
                 onDelete: onDeleteExercise == null ? null : () => onDeleteExercise!(exercise['id'] as String),
               );
             }),

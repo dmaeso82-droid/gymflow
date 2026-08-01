@@ -4,12 +4,17 @@ import '../models/exercise_input.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/section_title.dart';
 
-Future<ExerciseInput?> showExerciseSheet(BuildContext context) async {
-  final nameController = TextEditingController();
-  final setsController = TextEditingController(text: '3');
-  final repsController = TextEditingController(text: '10');
-  final weightController = TextEditingController();
-  final restController = TextEditingController(text: '60 s');
+Future<ExerciseInput?> showExerciseSheet(
+  BuildContext context, {
+  Map<String, dynamic>? initialExercise,
+}) async {
+  final isEditing = initialExercise != null;
+
+  final nameController = TextEditingController(text: initialExercise?['name']?.toString() ?? '');
+  final setsController = TextEditingController(text: initialExercise?['sets']?.toString() ?? '3');
+  final repsController = TextEditingController(text: initialExercise?['reps']?.toString() ?? '10');
+  final weightController = TextEditingController(text: initialExercise?['weight']?.toString() ?? '');
+  final restController = TextEditingController(text: initialExercise?['rest']?.toString() ?? '60 s');
 
   return showModalBottomSheet<ExerciseInput>(
     context: context,
@@ -27,7 +32,10 @@ Future<ExerciseInput?> showExerciseSheet(BuildContext context) async {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionTitle(icon: Icons.fitness_center, title: 'Añadir ejercicio'),
+            SectionTitle(
+              icon: Icons.fitness_center,
+              title: isEditing ? 'Editar ejercicio' : 'Añadir ejercicio',
+            ),
             const SizedBox(height: 16),
             AppTextField(controller: nameController, label: 'Nombre del ejercicio'),
             const SizedBox(height: 12),
@@ -75,8 +83,8 @@ Future<ExerciseInput?> showExerciseSheet(BuildContext context) async {
                   ),
                 );
               },
-              icon: const Icon(Icons.add),
-              label: const Text('Añadir ejercicio'),
+              icon: Icon(isEditing ? Icons.save : Icons.add),
+              label: Text(isEditing ? 'Guardar cambios' : 'Añadir ejercicio'),
             ),
           ],
         ),
