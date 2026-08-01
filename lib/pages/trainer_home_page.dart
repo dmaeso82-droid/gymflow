@@ -1,0 +1,341 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import '../sheets/exercise_sheet.dart';
+import '../widgets/app_card.dart';
+import '../widgets/app_text_field.dart';
+import '../widgets/header_card.dart';
+import '../widgets/routine_card.dart';
+import '../widgets/section_title.dart';
+
+class TrainerHomePage extends StatefulWidget {
+  final String gymId;
+  final String trainerName;
+
+  const TrainerHomePage({super.key, required this.gymId, required this.trainerName});
+
+  @override
+  State<TrainerHomePage> createState() => _TrainerHomePageState();
+}
+
+class _TrainerHomePageState extends State<TrainerHomePage> {
+  final clientNameController = TextEditingController();
+  final clientEmailController = TextEditingController();
+  final clientGoalController = TextEditingController();
+  final routineTitleController = TextEditingController();
+
+  String? selectedClientId;
+  String searchText = '';
+
+  CollectionReference<Map<String, dynamic>> get clientsRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('clients');
+
+  CollectionReference<Map<String, dynamic>> get routinesRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('routines');
+
+  @override
+  void dispose() {
+    clientNameController.dispose();
+    clientEmailController.dispose();
+    clientGoalController.dispose();
+    routineTitleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> addClient() async {
+    final name = clientNameController.text.trim();
+    final email = clientEmailController.text.trim().toLowerCase();
+    final goal = clientGoalController.text.trim();
+
+    if (name.isEmpty) {
+      showSnack('Introduce el nombre del cliente.');
+      return;
+    }
+
+    if (email.isEmpty) {
+      showSnack('Introduce el email del cliente.');
+      return;
+    }
+
+    final doc = await clientsRef.add({
+      'name': name,
+      'email': email,
+      'goal': goal.isEmpty ? 'Objetivo pendiente' : goal,
+      'level': 'Nuevo',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    setState(() {
+      selectedClientId = doc.id;
+      clientNameController.clear();
+      clientEmailController.clear();
+      clientGoalController.clear();
+    });
+  }
+
+  Future<void> addRoutine(List<QueryDocumentSnapshot<Map<String, dynamic>>> clients) async {
+    final title = routineTitleController.text.trim();
+
+    if (title.isEmpty) {
+      showSnack('Introduce el nombre de la rutina.');
+      return;
+    }
+
+    if (selectedClientId == null) {
+      showSnack('Selecciona un cliente.');
+      return;
+    }
+
+	if (clients.isEmpty) {
+		showSnack('No hay clientes.');
+		return;
+	}
+
+	QueryDocumentSnapshot<Map<String, dynamic>> selectedClientDoc =
+		clients.first;
+
+	for (final doc in clients) {
+		if (doc.id == selectedClientId) {
+			selectedClientDoc = doc;
+			break;
+		}
+	}
+    final selectedClient = selectedClientDoc.data();
+
+    await routinesRef.add({
+      'title': title,
+      'clientId': selectedClientDoc.id,
+      'clientName': selectedClient['name'] ?? 'Sin cliente',
+      'clientEmail': (selectedClient['email'] ?? '').toString().toLowerCase(),
+      'day': 'Nuevo día',
+      'notes': 'Añade observaciones para el usuario.',
+      'exercises': [],
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    routineTitleController.clear();
+  }
+
+  Future<void> addExercise(String routineId, List<dynamic> currentExercises) async {
+    final result = await showExerciseSheet(context);
+    if (result == null) return;
+
+    final newExercise = {
+      'id': DateTime.now().microsecondsSinceEpoch.toString(),
+      'name': result.name,
+      'sets': result.sets,
+      'reps': result.reps,
+      'weight': result.weight,
+      'rest': result.rest,
+      'done': false,
+    };
+
+    await routinesRef.doc(routineId).update({
+      'exercises': [...currentExercises, newExercise],
+    });
+  }
+
+  Future<void> updateExerciseDone(String routineId, List<dynamic> exercises, String exerciseId, bool done) async {
+    final updated = exercises.map((item) {
+      final map = Map<String, dynamic>.from(item as Map);
+      if (map['id'] == exerciseId) map['done'] = done;
+      return map;
+    }).toList();
+
+    await routinesRef.doc(routineId).update({'exercises': updated});
+  }
+
+  Future<void> deleteExercise(String routineId, List<dynamic> exercises, String exerciseId) async {
+    final updated = exercises.where((item) {
+      final map = Map<String, dynamic>.from(item as Map);
+      return map['id'] != exerciseId;
+    }).toList();
+
+    await routinesRef.doc(routineId).update({'exercises': updated});
+  }
+
+  void showSnack(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('GymFlow · ${widget.trainerName}'),
+        actions: [
+          IconButton(
+            onPressed: () => FirebaseAuth.instance.signOut(),
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const HeaderCard(subtitle: 'Panel de entrenador'),
+            const SizedBox(height: 16),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
+              builder: (context, clientSnapshot) {
+                final clients = clientSnapshot.data?.docs ?? [];
+
+                if (selectedClientId == null && clients.isNotEmpty) {
+                  selectedClientId = clients.first.id;
+                }
+
+                return Column(
+                  children: [
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SectionTitle(icon: Icons.person_add, title: 'Crear cliente'),
+                          const SizedBox(height: 12),
+                          AppTextField(controller: clientNameController, label: 'Nombre del cliente'),
+                          const SizedBox(height: 12),
+                          AppTextField(
+                            controller: clientEmailController,
+                            label: 'Email del cliente',
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          const SizedBox(height: 12),
+                          AppTextField(
+                            controller: clientGoalController,
+                            label: 'Objetivo',
+                            hint: 'Ej: Fuerza, pérdida de grasa...',
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: addClient,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Crear cliente'),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          if (clients.isNotEmpty)
+                            DropdownButtonFormField<String>(
+                              value: selectedClientId,
+                              dropdownColor: const Color(0xFF0F172A),
+                              decoration: const InputDecoration(
+                                labelText: 'Cliente seleccionado',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: clients.map((doc) {
+                                final data = doc.data();
+                                final name = data['name'] ?? 'Sin nombre';
+                                final email = data['email'] ?? 'Sin email';
+                                return DropdownMenuItem(
+                                  value: doc.id,
+                                  child: Text('$name · $email'),
+                                );
+                              }).toList(),
+                              onChanged: (value) => setState(() => selectedClientId = value),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SectionTitle(icon: Icons.playlist_add, title: 'Crear rutina'),
+                          const SizedBox(height: 12),
+                          AppTextField(
+                            controller: routineTitleController,
+                            label: 'Nombre de la rutina',
+                            hint: 'Ej: Pecho y tríceps',
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: clients.isEmpty ? null : () => addRoutine(clients),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Crear rutina'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      onChanged: (value) => setState(() => searchText = value),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: 'Buscar rutina o cliente',
+                        filled: true,
+                        fillColor: const Color(0xFF0F172A),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: routinesRef.orderBy('createdAt', descending: true).snapshots(),
+                      builder: (context, routineSnapshot) {
+                        if (routineSnapshot.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        final clientNames = {
+                          for (final doc in clients) doc.id: doc.data()['name'] ?? 'Sin cliente'
+                        };
+
+                        final routines = (routineSnapshot.data?.docs ?? []).where((doc) {
+                          final data = doc.data();
+                          final clientName = (data['clientName'] ?? clientNames[data['clientId']] ?? '').toString();
+                          final clientEmail = (data['clientEmail'] ?? '').toString();
+                          final fullText = '${data['title'] ?? ''} $clientName $clientEmail'.toLowerCase();
+                          return fullText.contains(searchText.toLowerCase());
+                        }).toList();
+
+                        if (routines.isEmpty) {
+                          return const AppCard(child: Center(child: Text('Todavía no hay rutinas.')));
+                        }
+
+                        return Column(
+                          children: routines.map((doc) {
+                            final data = doc.data();
+                            final exercises = List<dynamic>.from(data['exercises'] ?? []);
+                            final clientName = (data['clientName'] ?? clientNames[data['clientId']] ?? 'Sin cliente').toString();
+
+                            return RoutineCard(
+                              title: data['title'] ?? 'Sin título',
+                              day: data['day'] ?? 'Sin día',
+                              notes: data['notes'] ?? '',
+                              clientName: clientName,
+                              exercises: exercises,
+                              trainerMode: true,
+                              onAddExercise: () => addExercise(doc.id, exercises),
+                              onToggleExercise: (exerciseId, done) => updateExerciseDone(doc.id, exercises, exerciseId, done),
+                              onDeleteExercise: (exerciseId) => deleteExercise(doc.id, exercises, exerciseId),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
