@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/app_card.dart';
+import '../widgets/app_text_field.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/section_title.dart';
 
@@ -35,6 +36,123 @@ class RecentWorkoutHistory extends StatelessWidget {
     }
 
     return 0;
+  }
+
+
+  Future<void> editWorkoutLog(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    final weightController = TextEditingController(text: data['weight']?.toString() ?? '');
+    final repsController = TextEditingController(text: data['reps']?.toString() ?? '');
+
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          title: const Text('Editar registro'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppTextField(
+                controller: weightController,
+                label: 'Peso realizado (kg)',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                controller: repsController,
+                label: 'Repeticiones realizadas',
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                final weight = int.tryParse(weightController.text.trim());
+                final reps = int.tryParse(repsController.text.trim());
+
+                if (weight == null || reps == null || weight < 0 || reps <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Introduce peso y repeticiones válidas.')),
+                  );
+                  return;
+                }
+
+                Navigator.pop(dialogContext, {'weight': weight, 'reps': reps});
+              },
+              icon: const Icon(Icons.save),
+              label: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    weightController.dispose();
+    repsController.dispose();
+
+    if (result == null) return;
+
+    await logsRef.doc(doc.id).update({
+      'weight': result['weight'],
+      'reps': result['reps'],
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registro actualizado.')),
+      );
+    }
+  }
+
+  Future<void> deleteWorkoutLog(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    final exercise = data['exercise']?.toString() ?? 'este registro';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          title: const Text('Eliminar registro'),
+          content: Text('¿Seguro que quieres eliminar $exercise? Esta acción no se puede deshacer.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    await logsRef.doc(doc.id).delete();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registro eliminado.')),
+      );
+    }
   }
 
   @override
@@ -117,6 +235,21 @@ class RecentWorkoutHistory extends StatelessWidget {
                             ),
                           ],
                         ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Editar registro',
+                            onPressed: () => editWorkoutLog(context, doc),
+                            icon: const Icon(Icons.edit, color: Colors.greenAccent),
+                          ),
+                          IconButton(
+                            tooltip: 'Eliminar registro',
+                            onPressed: () => deleteWorkoutLog(context, doc),
+                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                          ),
+                        ],
                       ),
                     ),
                   );

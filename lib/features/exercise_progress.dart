@@ -86,8 +86,6 @@ class ExerciseProgress extends StatelessWidget {
         }
 
         final progressItems = <Map<String, dynamic>>[];
-        int totalVolume = 0;
-
         groupedLogs.forEach((exercise, docs) {
           docs.sort((a, b) {
             final aDate = timestampSortValue(a.data()['createdAt']);
@@ -99,14 +97,10 @@ class ExerciseProgress extends StatelessWidget {
           final latest = docs.last.data();
 
           Map<String, dynamic> best = first;
-          int exerciseVolume = 0;
-
           for (final doc in docs) {
             final data = doc.data();
             final weight = intValue(data['weight']);
             final reps = intValue(data['reps']);
-
-            exerciseVolume += weight * reps;
 
             final bestWeight = intValue(best['weight']);
             final bestReps = intValue(best['reps']);
@@ -115,8 +109,6 @@ class ExerciseProgress extends StatelessWidget {
               best = data;
             }
           }
-
-          totalVolume += exerciseVolume;
 
           final firstWeight = intValue(first['weight']);
           final latestWeight = intValue(latest['weight']);
@@ -134,7 +126,6 @@ class ExerciseProgress extends StatelessWidget {
             'bestReps': bestReps,
             'weightDelta': weightDelta,
             'series': docs.length,
-            'volume': exerciseVolume,
             'latestDate': latest['createdAt'],
             'routineTitle': latest['routineTitle']?.toString() ?? 'Rutina',
           });
@@ -166,7 +157,6 @@ class ExerciseProgress extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  InfoChip(text: '$totalVolume kg volumen'),
                   InfoChip(text: '$improvedCount ejercicios mejorando'),
                   InfoChip(text: 'Mayor progreso: $bestProgressText'),
                 ],
@@ -186,7 +176,6 @@ class ExerciseProgress extends StatelessWidget {
                   final bestReps = intValue(item['bestReps']);
                   final weightDelta = intValue(item['weightDelta']);
                   final series = intValue(item['series']);
-                  final volume = intValue(item['volume']);
                   final routineTitle = item['routineTitle']?.toString() ?? 'Rutina';
                   final latestDate = formatDate(item['latestDate']);
                   final isImproving = weightDelta > 0;
@@ -230,7 +219,6 @@ class ExerciseProgress extends StatelessWidget {
                                 InfoChip(text: 'Progreso ${signedKg(weightDelta)}'),
                                 InfoChip(text: 'Mejor $bestWeight kg x $bestReps'),
                                 InfoChip(text: '$series series'),
-                                InfoChip(text: '$volume kg volumen'),
                                 InfoChip(text: latestDate),
                               ],
                             ),

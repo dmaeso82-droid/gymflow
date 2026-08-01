@@ -50,6 +50,48 @@ class ClientProgress extends StatelessWidget {
     return 'Fecha pendiente';
   }
 
+
+  Future<void> deleteWorkoutLog(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    final exercise = data['exercise']?.toString() ?? 'este registro';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F172A),
+          title: const Text('Eliminar registro del cliente'),
+          content: Text('¿Seguro que quieres eliminar $exercise del historial de $clientName? Esta acción no se puede deshacer.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    await logsRef.doc(doc.id).delete();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registro eliminado del cliente.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final normalizedEmail = clientEmail.trim().toLowerCase();
@@ -103,7 +145,6 @@ class ClientProgress extends StatelessWidget {
           );
         }
 
-        int totalVolume = 0;
         final exercises = <String>{};
         Map<String, dynamic>? bestRecord;
 
@@ -114,8 +155,6 @@ class ClientProgress extends StatelessWidget {
           final reps = intValue(data['reps']);
 
           if (exercise.isNotEmpty) exercises.add(exercise);
-          totalVolume += weight * reps;
-
           if (bestRecord == null ||
               weight > intValue(bestRecord['weight']) ||
               (weight == intValue(bestRecord['weight']) && reps > intValue(bestRecord['reps']))) {
@@ -146,7 +185,6 @@ class ClientProgress extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   InfoChip(text: '${logs.length} series registradas'),
-                  InfoChip(text: '$totalVolume kg volumen'),
                   InfoChip(text: '${exercises.length} ejercicios'),
                   InfoChip(text: 'Último: $latestDate'),
                   InfoChip(text: 'Mejor: $bestExercise $bestWeight kg x $bestReps'),
@@ -205,6 +243,11 @@ class ClientProgress extends StatelessWidget {
                           ),
                         ],
                       ),
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Eliminar registro',
+                      onPressed: () => deleteWorkoutLog(context, doc),
+                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                     ),
                   ),
                 );
