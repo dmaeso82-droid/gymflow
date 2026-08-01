@@ -462,8 +462,21 @@ class _TrainerHomePageState extends State<TrainerHomePage> {
                           for (final doc in clients) doc.id: doc.data()['name'] ?? 'Sin cliente'
                         };
 
+                        if (selectedClientId == null) {
+                          return const AppCard(
+                            child: Center(
+                              child: Text('Selecciona un cliente para ver sus rutinas y progreso.'),
+                            ),
+                          );
+                        }
+
                         final routines = (routineSnapshot.data?.docs ?? []).where((doc) {
                           final data = doc.data();
+
+                          if (data['clientId'] != selectedClientId) {
+                            return false;
+                          }
+
                           final clientName = (data['clientName'] ?? clientNames[data['clientId']] ?? '').toString();
                           final clientEmail = (data['clientEmail'] ?? '').toString();
                           final fullText = '${data['title'] ?? ''} $clientName $clientEmail'.toLowerCase();
@@ -471,7 +484,11 @@ class _TrainerHomePageState extends State<TrainerHomePage> {
                         }).toList();
 
                         if (routines.isEmpty) {
-                          return const AppCard(child: Center(child: Text('Todavía no hay rutinas.')));
+                          return const AppCard(
+                            child: Center(
+                              child: Text('El cliente seleccionado no tiene rutinas que coincidan con la búsqueda.'),
+                            ),
+                          );
                         }
 
                         return Column(
