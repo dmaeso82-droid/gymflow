@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../features/client_progress.dart';
 import '../sheets/exercise_sheet.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
@@ -282,6 +283,31 @@ class _TrainerHomePageState extends State<TrainerHomePage> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    if (clients.isNotEmpty && selectedClientId != null)
+                      Builder(
+                        builder: (context) {
+                          QueryDocumentSnapshot<Map<String, dynamic>> selectedClientDoc = clients.first;
+
+                          for (final doc in clients) {
+                            if (doc.id == selectedClientId) {
+                              selectedClientDoc = doc;
+                              break;
+                            }
+                          }
+
+                          final selectedClient = selectedClientDoc.data();
+                          final selectedClientName = selectedClient['name']?.toString() ?? 'Cliente';
+                          final selectedClientEmail = (selectedClient['email'] ?? '').toString().toLowerCase();
+
+                          return ClientProgress(
+                            gymId: widget.gymId,
+                            clientName: selectedClientName,
+                            clientEmail: selectedClientEmail,
+                          );
+                        },
+                      ),
+                    if (clients.isNotEmpty && selectedClientId != null)
+                      const SizedBox(height: 16),
                     StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                       stream: routinesRef.orderBy('createdAt', descending: true).snapshots(),
                       builder: (context, routineSnapshot) {
