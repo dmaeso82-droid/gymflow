@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -33,11 +34,29 @@ class RoleGatePage extends StatelessWidget {
           return TrainerHomePage(gymId: gymId, trainerName: name);
         }
 
-        return UserHomePage(
-          gymId: gymId,
-          userId: uid,
-          userName: name,
-          userEmail: email,
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('gyms')
+              .doc(gymId)
+              .collection('clients')
+              .where('email', isEqualTo: email)
+              .limit(1)
+              .snapshots(),
+          builder: (context, clientSnapshot) {
+            var displayName = name;
+
+            if (clientSnapshot.hasData && clientSnapshot.data!.docs.isNotEmpty) {
+              final clientData = clientSnapshot.data!.docs.first.data();
+              displayName = clientData['name']?.toString() ?? name;
+            }
+
+            return UserHomePage(
+              gymId: gymId,
+              userId: uid,
+              userName: displayName,
+              userEmail: email,
+            );
+          },
         );
       },
     );

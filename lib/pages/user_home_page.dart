@@ -5,6 +5,7 @@ import '../widgets/app_card.dart';
 import '../widgets/header_card.dart';
 import '../widgets/menu_action_card.dart';
 import '../widgets/profile_avatar.dart';
+import '../features/user_dashboard.dart';
 import 'user_calendar_page.dart';
 import 'user_goals_page.dart';
 import 'user_history_page.dart';
@@ -76,6 +77,13 @@ class UserHomePage extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 16),
+            UserDashboard(
+              gymId: gymId,
+              userId: userId,
+              userName: userName,
+              userEmail: userEmail,
             ),
             const SizedBox(height: 16),
             MenuActionCard(
