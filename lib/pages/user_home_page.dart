@@ -1,8 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/app_card.dart';
 import '../widgets/header_card.dart';
 import '../widgets/menu_action_card.dart';
+import '../widgets/profile_avatar.dart';
 import 'user_goals_page.dart';
 import 'user_history_page.dart';
 import 'user_measurements_page.dart';
@@ -49,6 +51,31 @@ class UserHomePage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           children: [
             const HeaderCard(subtitle: 'Panel de usuario'),
+            const SizedBox(height: 16),
+            AppCard(
+              child: Row(
+                children: [
+                  ProfileAvatar(name: userName, size: 64),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          userName,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          userEmail,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
             MenuActionCard(
               icon: Icons.fitness_center,

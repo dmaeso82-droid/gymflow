@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/info_chip.dart';
+import '../widgets/profile_avatar.dart';
 import '../widgets/section_title.dart';
 
 class TrainerClientsPage extends StatefulWidget {
@@ -267,13 +268,27 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              ProfileAvatar(name: name),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                                    const SizedBox(height: 4),
+                                    Text(email, style: const TextStyle(color: Colors.white70)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              InfoChip(text: email),
                               InfoChip(text: goal),
                             ],
                           ),
