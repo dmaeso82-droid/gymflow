@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/section_title.dart';
+import 'user_achievements.dart';
 
 class UserDashboard extends StatelessWidget {
   final String gymId;
@@ -261,6 +262,13 @@ class UserDashboard extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 16),
+            UserAchievementsPanel(
+              gymId: gymId,
+              userId: userId,
+              userEmail: userEmail,
+              compact: true,
             ),
             const SizedBox(height: 16),
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(

@@ -6,6 +6,7 @@ import '../widgets/header_card.dart';
 import '../widgets/menu_action_card.dart';
 import '../widgets/profile_avatar.dart';
 import '../features/user_dashboard.dart';
+import 'user_achievements_page.dart';
 import 'user_calendar_page.dart';
 import 'user_goals_page.dart';
 import 'user_history_page.dart';
@@ -86,6 +87,20 @@ class UserHomePage extends StatelessWidget {
               userEmail: userEmail,
             ),
             const SizedBox(height: 16),
+            MenuActionCard(
+              icon: Icons.military_tech,
+              title: 'Mis logros',
+              subtitle: 'Ver medallas, rachas y logros desbloqueados.',
+              onTap: () => openPage(
+                context,
+                UserAchievementsPage(
+                  gymId: gymId,
+                  userId: userId,
+                  userEmail: userEmail,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             MenuActionCard(
               icon: Icons.fitness_center,
               title: 'Mis rutinas',
