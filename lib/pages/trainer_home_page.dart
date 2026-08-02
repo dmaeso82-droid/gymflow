@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../features/body_measurements.dart';
+import '../features/client_goals.dart';
 import '../features/client_progress.dart';
 import '../sheets/exercise_sheet.dart';
 import '../widgets/app_card.dart';
@@ -649,6 +650,12 @@ class _TrainerHomePageState extends State<TrainerHomePage> {
                                 filterValue: selectedClientEmail,
                                 title: 'Medidas del cliente',
                                 emptyText: 'Este cliente todavía no tiene medidas corporales registradas.',
+                              ),
+                              const SizedBox(height: 16),
+                              ClientGoalsPanel(
+                                gymId: widget.gymId,
+                                clientName: selectedClientName,
+                                clientEmail: selectedClientEmail,
                               ),
                             ],
                           );
