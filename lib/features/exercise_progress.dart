@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +7,7 @@ import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/section_title.dart';
 
-class ExerciseProgress extends StatelessWidget {
+class ExerciseProgress extends StatefulWidget {
   final CollectionReference<Map<String, dynamic>> logsRef;
   final String userId;
 
@@ -16,16 +17,39 @@ class ExerciseProgress extends StatelessWidget {
     required this.userId,
   });
 
+  @override
+  State<ExerciseProgress> createState() => _ExerciseProgressState();
+}
+
+class _ExerciseProgressState extends State<ExerciseProgress> {
+  String? selectedExercise;
+
   int intValue(dynamic value) {
     if (value is int) return value;
     if (value is num) return value.round();
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  double doubleValue(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    return double.tryParse((value?.toString() ?? '').replaceAll(',', '.')) ?? 0.0;
+  }
+
+  String formatKg(double value) {
+    if (value == value.roundToDouble()) return '${value.round()} kg';
+    return '${value.toStringAsFixed(1).replaceAll('.', ',')} kg';
+  }
+
+  String signedKg(double value) {
+    if (value > 0) return '+${formatKg(value)}';
+    if (value < 0) return '-${formatKg(value.abs())}';
+    return '0 kg';
+  }
+
   int timestampSortValue(dynamic value) {
-    if (value is Timestamp) {
-      return value.millisecondsSinceEpoch;
-    }
+    if (value is Timestamp) return value.millisecondsSinceEpoch;
     return 0;
   }
 
@@ -40,25 +64,16 @@ class ExerciseProgress extends StatelessWidget {
     return 'Fecha pendiente';
   }
 
-  String signedKg(int value) {
-    if (value > 0) return '+$value kg';
-    if (value < 0) return '$value kg';
-    return '0 kg';
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: logsRef.where('userId', isEqualTo: userId).snapshots(),
+      stream: widget.logsRef.where('userId', isEqualTo: widget.userId).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(
-            child: Center(child: CircularProgressIndicator()),
-          );
+          return const AppCard(child: Center(child: CircularProgressIndicator()));
         }
 
         final logs = snapshot.data?.docs ?? [];
-
         if (logs.isEmpty) {
           return const AppCard(
             child: Column(
@@ -75,8 +90,7 @@ class ExerciseProgress extends StatelessWidget {
           );
         }
 
-        final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> groupedLogs = {};
-
+        final groupedLogs = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
         for (final doc in logs) {
           final data = doc.data();
           final exercise = data['exercise']?.toString().trim() ?? '';
@@ -84,8 +98,16 @@ class ExerciseProgress extends StatelessWidget {
           groupedLogs.putIfAbsent(exercise, () => []).add(doc);
         }
 
-        final progressItems = <Map<String, dynamic>>[];
+        final exerciseNames = groupedLogs.keys.toList()..sort();
+        if (exerciseNames.isEmpty) {
+          return const AppCard(child: Text('Todavía no hay ejercicios registrados.'));
+        }
 
+        if (selectedExercise == null || !exerciseNames.contains(selectedExercise)) {
+          selectedExercise = exerciseNames.first;
+        }
+
+        final progressItems = <Map<String, dynamic>>[];
         groupedLogs.forEach((exercise, docs) {
           docs.sort((a, b) {
             final aDate = timestampSortValue(a.data()['createdAt']);
@@ -100,9 +122,9 @@ class ExerciseProgress extends StatelessWidget {
 
           for (var index = 0; index < docs.length; index++) {
             final data = docs[index].data();
-            final weight = intValue(data['weight']);
+            final weight = doubleValue(data['weight']);
             final reps = intValue(data['reps']);
-            final bestWeight = intValue(best['weight']);
+            final bestWeight = doubleValue(best['weight']);
             final bestReps = intValue(best['reps']);
 
             points.add({
@@ -117,9 +139,9 @@ class ExerciseProgress extends StatelessWidget {
             }
           }
 
-          final firstWeight = intValue(first['weight']);
-          final latestWeight = intValue(latest['weight']);
-          final bestWeight = intValue(best['weight']);
+          final firstWeight = doubleValue(first['weight']);
+          final latestWeight = doubleValue(latest['weight']);
+          final bestWeight = doubleValue(best['weight']);
           final latestReps = intValue(latest['reps']);
           final bestReps = intValue(best['reps']);
           final weightDelta = latestWeight - firstWeight;
@@ -140,18 +162,23 @@ class ExerciseProgress extends StatelessWidget {
         });
 
         progressItems.sort((a, b) {
-          final deltaCompare = intValue(b['weightDelta']).compareTo(intValue(a['weightDelta']));
+          final deltaCompare = doubleValue(b['weightDelta']).compareTo(doubleValue(a['weightDelta']));
           if (deltaCompare != 0) return deltaCompare;
-          final bestCompare = intValue(b['bestWeight']).compareTo(intValue(a['bestWeight']));
+          final bestCompare = doubleValue(b['bestWeight']).compareTo(doubleValue(a['bestWeight']));
           if (bestCompare != 0) return bestCompare;
           return a['exercise'].toString().compareTo(b['exercise'].toString());
         });
 
-        final improvedCount = progressItems.where((item) => intValue(item['weightDelta']) > 0).length;
+        final improvedCount = progressItems.where((item) => doubleValue(item['weightDelta']) > 0).length;
         final bestProgress = progressItems.isEmpty ? null : progressItems.first;
         final bestProgressText = bestProgress == null
             ? '-'
-            : '${bestProgress['exercise']} ${signedKg(intValue(bestProgress['weightDelta']))}';
+            : '${bestProgress['exercise']} ${signedKg(doubleValue(bestProgress['weightDelta']))}';
+
+        final selectedItem = progressItems.firstWhere(
+          (item) => item['exercise'] == selectedExercise,
+          orElse: () => progressItems.first,
+        );
 
         return AppCard(
           child: Column(
@@ -168,95 +195,30 @@ class ExerciseProgress extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              if (progressItems.isEmpty)
-                const Text(
-                  'Todavía no hay evolución calculable.',
-                  style: TextStyle(color: Colors.white70),
-                )
-              else
-                ...progressItems.take(10).map((item) {
-                  final exercise = item['exercise']?.toString() ?? 'Ejercicio';
-                  final latestWeight = intValue(item['latestWeight']);
-                  final latestReps = intValue(item['latestReps']);
-                  final bestWeight = intValue(item['bestWeight']);
-                  final bestReps = intValue(item['bestReps']);
-                  final weightDelta = intValue(item['weightDelta']);
-                  final series = intValue(item['series']);
-                  final routineTitle = item['routineTitle']?.toString() ?? 'Rutina';
-                  final latestDate = formatDate(item['latestDate']);
-                  final isImproving = weightDelta > 0;
-                  final points = List<Map<String, dynamic>>.from(item['points'] ?? []);
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF020617),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Container(
-                              width: 42,
-                              height: 42,
-                              decoration: BoxDecoration(
-                                color: (isImproving ? Colors.greenAccent : Colors.white54).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Icon(
-                                isImproving ? Icons.trending_up : Icons.trending_flat,
-                                color: isImproving ? Colors.greenAccent : Colors.white54,
-                              ),
-                            ),
-                            title: Text(
-                              exercise,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(routineTitle, style: const TextStyle(color: Colors.white70)),
-                                  const SizedBox(height: 6),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children: [
-                                      InfoChip(text: 'Actual $latestWeight kg x $latestReps'),
-                                      InfoChip(text: 'Progreso ${signedKg(weightDelta)}'),
-                                      InfoChip(text: 'Mejor $bestWeight kg x $bestReps'),
-                                      InfoChip(text: '$series series'),
-                                      InfoChip(text: latestDate),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (points.length >= 2) ...[
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              height: 160,
-                              child: ExerciseLineChart(points: points),
-                            ),
-                          ] else ...[
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Registra al menos 2 series para ver la gráfica de evolución.',
-                              style: TextStyle(color: Colors.white54, fontSize: 12),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  );
-                }),
+              DropdownButtonFormField<String>(
+                value: selectedExercise,
+                dropdownColor: const Color(0xFF0F172A),
+                decoration: const InputDecoration(
+                  labelText: 'Ejercicio',
+                  border: OutlineInputBorder(),
+                ),
+                items: exerciseNames.map((exercise) {
+                  return DropdownMenuItem(value: exercise, child: Text(exercise));
+                }).toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => selectedExercise = value);
+                },
+              ),
+              const SizedBox(height: 14),
+              ExerciseProgressDetail(
+                item: selectedItem,
+                formatKg: formatKg,
+                signedKg: signedKg,
+                formatDate: formatDate,
+                doubleValue: doubleValue,
+                intValue: intValue,
+              ),
             ],
           ),
         );
@@ -265,27 +227,119 @@ class ExerciseProgress extends StatelessWidget {
   }
 }
 
+class ExerciseProgressDetail extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final String Function(double value) formatKg;
+  final String Function(double value) signedKg;
+  final String Function(dynamic value) formatDate;
+  final double Function(dynamic value) doubleValue;
+  final int Function(dynamic value) intValue;
+
+  const ExerciseProgressDetail({
+    super.key,
+    required this.item,
+    required this.formatKg,
+    required this.signedKg,
+    required this.formatDate,
+    required this.doubleValue,
+    required this.intValue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final exercise = item['exercise']?.toString() ?? 'Ejercicio';
+    final latestWeight = doubleValue(item['latestWeight']);
+    final latestReps = intValue(item['latestReps']);
+    final bestWeight = doubleValue(item['bestWeight']);
+    final bestReps = intValue(item['bestReps']);
+    final weightDelta = doubleValue(item['weightDelta']);
+    final series = intValue(item['series']);
+    final routineTitle = item['routineTitle']?.toString() ?? 'Rutina';
+    final latestDate = formatDate(item['latestDate']);
+    final isImproving = weightDelta > 0;
+    final points = List<Map<String, dynamic>>.from(item['points'] ?? []);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF020617),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: (isImproving ? Colors.greenAccent : Colors.white54).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isImproving ? Icons.trending_up : Icons.trending_flat,
+                  color: isImproving ? Colors.greenAccent : Colors.white54,
+                ),
+              ),
+              title: Text(exercise, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(routineTitle, style: const TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        InfoChip(text: 'Actual ${formatKg(latestWeight)} x $latestReps'),
+                        InfoChip(text: 'Progreso ${signedKg(weightDelta)}'),
+                        InfoChip(text: 'Mejor ${formatKg(bestWeight)} x $bestReps'),
+                        InfoChip(text: '$series series'),
+                        InfoChip(text: latestDate),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (points.length >= 2) ...[
+              const SizedBox(height: 10),
+              SizedBox(height: 180, child: ExerciseLineChart(points: points, formatKg: formatKg)),
+            ] else ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Registra al menos 2 series para ver la gráfica de evolución.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ExerciseLineChart extends StatelessWidget {
   final List<Map<String, dynamic>> points;
+  final String Function(double value) formatKg;
 
-  const ExerciseLineChart({super.key, required this.points});
+  const ExerciseLineChart({super.key, required this.points, required this.formatKg});
 
   double doubleValue(dynamic value) {
     if (value is double) return value;
     if (value is int) return value.toDouble();
     if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '') ?? 0;
+    return double.tryParse((value?.toString() ?? '').replaceAll(',', '.')) ?? 0.0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final spots = points.map((point) {
-      return FlSpot(
-        doubleValue(point['x']),
-        doubleValue(point['weight']),
-      );
-    }).toList();
-
+    final spots = points.map((point) => FlSpot(doubleValue(point['x']), doubleValue(point['weight']))).toList();
     final weights = spots.map((spot) => spot.y).toList();
     final minWeight = weights.reduce((a, b) => a < b ? a : b);
     final maxWeight = weights.reduce((a, b) => a > b ? a : b);
@@ -302,10 +356,7 @@ class ExerciseLineChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: Colors.white.withOpacity(0.08),
-            strokeWidth: 1,
-          ),
+          getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.08), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -314,20 +365,14 @@ class ExerciseLineChart extends StatelessWidget {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 42,
+              reservedSize: 48,
               getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.round()}kg',
-                  style: const TextStyle(color: Colors.white54, fontSize: 10),
-                );
+                return Text(formatKg(value), style: const TextStyle(color: Colors.white54, fontSize: 10));
               },
             ),
           ),
         ),
-        borderData: FlBorderData(
-          show: true,
-          border: Border.all(color: Colors.white10),
-        ),
+        borderData: FlBorderData(show: true, border: Border.all(color: Colors.white10)),
         lineBarsData: [
           LineChartBarData(
             spots: spots,
@@ -336,10 +381,7 @@ class ExerciseLineChart extends StatelessWidget {
             barWidth: 3,
             isStrokeCapRound: true,
             dotData: FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              color: Colors.greenAccent.withOpacity(0.12),
-            ),
+            belowBarData: BarAreaData(show: true, color: Colors.greenAccent.withOpacity(0.12)),
           ),
         ],
         lineTouchData: LineTouchData(
@@ -349,7 +391,7 @@ class ExerciseLineChart extends StatelessWidget {
                 final index = spot.x.round();
                 final reps = index >= 0 && index < points.length ? points[index]['reps']?.toString() ?? '-' : '-';
                 return LineTooltipItem(
-                  '${spot.y.round()} kg x $reps',
+                  '${formatKg(spot.y)} x $reps',
                   const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 );
               }).toList();

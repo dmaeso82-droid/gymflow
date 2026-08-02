@@ -134,9 +134,9 @@ class UserDashboard extends StatelessWidget {
     Map<String, dynamic>? best;
     for (final log in logs) {
       final data = log.data();
-      final weight = intValue(data['weight']);
+      final weight = doubleValue(data['weight']);
       final reps = intValue(data['reps']);
-      if (best == null || weight > intValue(best['weight']) || (weight == intValue(best['weight']) && reps > intValue(best['reps']))) {
+      if (best == null || weight > doubleValue(best['weight']) || (weight == doubleValue(best['weight']) && reps > intValue(best['reps']))) {
         best = data;
       }
     }
@@ -160,7 +160,7 @@ class UserDashboard extends StatelessWidget {
         final best = bestRecord(logs);
         final latestLogDate = logs.isEmpty ? 'Sin entrenos' : formatDate(logs.first.data()['createdAt']);
         final bestExercise = best?['exercise']?.toString() ?? 'Sin marca';
-        final bestWeight = best == null ? '-' : '${intValue(best['weight'])} kg';
+        final bestWeight = best == null ? '-' : '${formatCompactNumber(doubleValue(best['weight']))} kg';
         final bestReps = best == null ? '-' : '${intValue(best['reps'])} reps';
 
         return Column(

@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -21,6 +22,18 @@ class PersonalRecords extends StatelessWidget {
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  double doubleValue(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    return double.tryParse((value?.toString() ?? '').replaceAll(',', '.')) ?? 0.0;
+  }
+
+  String formatKg(double value) {
+    if (value == value.roundToDouble()) return '${value.round()} kg';
+    return '${value.toStringAsFixed(1).replaceAll('.', ',')} kg';
+  }
+
   String formatDate(dynamic value) {
     if (value is Timestamp) {
       final date = value.toDate();
@@ -29,7 +42,6 @@ class PersonalRecords extends StatelessWidget {
       final year = date.year.toString();
       return '$day/$month/$year';
     }
-
     return 'Fecha pendiente';
   }
 
@@ -39,13 +51,10 @@ class PersonalRecords extends StatelessWidget {
       stream: logsRef.where('userId', isEqualTo: userId).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(
-            child: Center(child: CircularProgressIndicator()),
-          );
+          return const AppCard(child: Center(child: CircularProgressIndicator()));
         }
 
         final logs = snapshot.data?.docs ?? [];
-
         if (logs.isEmpty) {
           return const AppCard(
             child: Column(
@@ -62,23 +71,21 @@ class PersonalRecords extends StatelessWidget {
           );
         }
 
-        final Map<String, Map<String, dynamic>> records = {};
-
+        final records = <String, Map<String, dynamic>>{};
         for (final doc in logs) {
           final data = doc.data();
           final exercise = data['exercise']?.toString().trim() ?? '';
           if (exercise.isEmpty) continue;
 
-          final weight = intValue(data['weight']);
+          final weight = doubleValue(data['weight']);
           final reps = intValue(data['reps']);
           final createdAt = data['createdAt'];
           final routineTitle = data['routineTitle']?.toString() ?? 'Rutina';
-
           final current = records[exercise];
 
           if (current == null ||
-              weight > intValue(current['weight']) ||
-              (weight == intValue(current['weight']) && reps > intValue(current['reps']))) {
+              weight > doubleValue(current['weight']) ||
+              (weight == doubleValue(current['weight']) && reps > intValue(current['reps']))) {
             records[exercise] = {
               'exercise': exercise,
               'weight': weight,
@@ -93,21 +100,18 @@ class PersonalRecords extends StatelessWidget {
         }
 
         final recordList = records.values.toList();
-
         recordList.sort((a, b) {
-          final weightCompare = intValue(b['weight']).compareTo(intValue(a['weight']));
+          final weightCompare = doubleValue(b['weight']).compareTo(doubleValue(a['weight']));
           if (weightCompare != 0) return weightCompare;
-
           final repsCompare = intValue(b['reps']).compareTo(intValue(a['reps']));
           if (repsCompare != 0) return repsCompare;
-
           return a['exercise'].toString().compareTo(b['exercise'].toString());
         });
 
         final bestOverall = recordList.isEmpty ? null : recordList.first;
         final bestOverallText = bestOverall == null
             ? '-'
-            : '${bestOverall['weight']} kg · ${bestOverall['exercise']}';
+            : '${formatKg(doubleValue(bestOverall['weight']))} · ${bestOverall['exercise']}';
 
         return AppCard(
           child: Column(
@@ -126,14 +130,11 @@ class PersonalRecords extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               if (recordList.isEmpty)
-                const Text(
-                  'Todavía no hay récords calculables.',
-                  style: TextStyle(color: Colors.white70),
-                )
+                const Text('Todavía no hay récords calculables.', style: TextStyle(color: Colors.white70))
               else
                 ...recordList.take(10).map((record) {
                   final exercise = record['exercise']?.toString() ?? 'Ejercicio';
-                  final weight = intValue(record['weight']);
+                  final weight = doubleValue(record['weight']);
                   final reps = intValue(record['reps']);
                   final routineTitle = record['routineTitle']?.toString() ?? 'Rutina';
                   final date = formatDate(record['createdAt']);
@@ -155,10 +156,7 @@ class PersonalRecords extends StatelessWidget {
                         ),
                         child: const Icon(Icons.workspace_premium, color: Colors.amberAccent),
                       ),
-                      title: Text(
-                        exercise,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      title: Text(exercise, style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Column(
@@ -170,7 +168,7 @@ class PersonalRecords extends StatelessWidget {
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                InfoChip(text: 'PR $weight kg'),
+                                InfoChip(text: 'PR ${formatKg(weight)}'),
                                 InfoChip(text: '$reps reps'),
                                 InfoChip(text: date),
                               ],

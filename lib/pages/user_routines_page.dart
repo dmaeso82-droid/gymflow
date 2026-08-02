@@ -30,6 +30,37 @@ class UserRoutinesPage extends StatelessWidget {
       .doc(gymId)
       .collection('workout_logs');
 
+  static const quickWeights = <double>[
+    2.5,
+    5,
+    7.5,
+    10,
+    12.5,
+    15,
+    16,
+    17.5,
+    18,
+    20,
+    22.5,
+    25,
+    27.5,
+    30,
+    32.5,
+    35,
+    37.5,
+    40,
+    45,
+    50,
+    55,
+    60,
+    70,
+    80,
+    90,
+    100,
+  ];
+
+  static const quickReps = <int>[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30];
+
   bool isActiveRoutine(Map<String, dynamic> data) {
     return (data['status'] ?? 'active').toString() != 'archived';
   }
@@ -40,6 +71,17 @@ class UserRoutinesPage extends StatelessWidget {
     final text = value?.toString() ?? '';
     final match = RegExp(r'\d+').firstMatch(text);
     return int.tryParse(match?.group(0) ?? '') ?? fallback;
+  }
+
+  double? decimalValue(String value) {
+    final normalized = value.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
+
+  String formatWeight(double value) {
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toStringAsFixed(1).replaceAll('.', ',');
   }
 
   int totalSets(Map<String, dynamic> exercise) {
@@ -84,7 +126,7 @@ class UserRoutinesPage extends StatelessWidget {
     required String routineId,
     required String routineTitle,
     required Map<String, dynamic> exercise,
-    required int weight,
+    required double weight,
     required int reps,
     required int setNumber,
     required int plannedSetCount,
@@ -132,57 +174,137 @@ class UserRoutinesPage extends StatelessWidget {
     final nextSetNumber = currentCompletedSets + 1;
     final weightText = (exercise['weight'] ?? '').toString();
     final repsText = (exercise['reps'] ?? '').toString();
-    final suggestedWeight = RegExp(r'\d+').firstMatch(weightText)?.group(0) ?? '';
+    final suggestedWeightRaw = RegExp(r'\d+(?:[\.,]\d+)?').firstMatch(weightText)?.group(0) ?? '';
+    final suggestedWeight = suggestedWeightRaw.replaceAll('.', ',');
     final suggestedReps = RegExp(r'\d+').firstMatch(repsText)?.group(0) ?? '';
 
     final weightController = TextEditingController(text: suggestedWeight);
     final repsController = TextEditingController(text: suggestedReps);
 
-    final result = await showDialog<Map<String, int>>(
+
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: Text('Registrar ${exercise['name'] ?? 'ejercicio'} ($nextSetNumber/$plannedSetCount)'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppTextField(
-                controller: weightController,
-                label: 'Peso realizado (kg)',
-                keyboardType: TextInputType.number,
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF0F172A),
+              title: Text('Registrar ${exercise['name'] ?? 'ejercicio'} ($nextSetNumber/$plannedSetCount)'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Pesos rápidos',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: quickWeights.map((weight) {
+                          final text = formatWeight(weight);
+                          final selected = weightController.text.trim() == text;
+                          return ChoiceChip(
+                            label: Text('$text kg'),
+                            selected: selected,
+                            selectedColor: Colors.greenAccent.withOpacity(0.22),
+                            backgroundColor: const Color(0xFF020617),
+                            labelStyle: TextStyle(
+                              color: selected ? Colors.greenAccent : Colors.white70,
+                              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                            side: BorderSide(color: selected ? Colors.greenAccent : Colors.white12),
+                            onSelected: (_) {
+                              setDialogState(() {
+                                weightController.text = text;
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AppTextField(
+                      controller: weightController,
+                      label: 'Peso realizado (kg)',
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Repeticiones rápidas',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: quickReps.map((reps) {
+                          final text = reps.toString();
+                          final selected = repsController.text.trim() == text;
+                          return ChoiceChip(
+                            label: Text(text),
+                            selected: selected,
+                            selectedColor: Colors.greenAccent.withOpacity(0.22),
+                            backgroundColor: const Color(0xFF020617),
+                            labelStyle: TextStyle(
+                              color: selected ? Colors.greenAccent : Colors.white70,
+                              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                            side: BorderSide(color: selected ? Colors.greenAccent : Colors.white12),
+                            onSelected: (_) {
+                              setDialogState(() {
+                                repsController.text = text;
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AppTextField(
+                      controller: repsController,
+                      label: 'Repeticiones realizadas',
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Puedes usar los chips rápidos o escribir manualmente. Se aceptan pesos con coma o punto, por ejemplo 17,5 o 17.5.',
+                      style: TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              AppTextField(
-                controller: repsController,
-                label: 'Repeticiones realizadas',
-                keyboardType: TextInputType.number,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton.icon(
-              onPressed: () {
-                final weight = int.tryParse(weightController.text.trim());
-                final reps = int.tryParse(repsController.text.trim());
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    final weight = decimalValue(weightController.text);
+                    final reps = int.tryParse(repsController.text.trim());
 
-                if (weight == null || reps == null || weight < 0 || reps <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Introduce peso y repeticiones válidas.')),
-                  );
-                  return;
-                }
+                    if (weight == null || reps == null || weight < 0 || reps <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Introduce peso y repeticiones válidas.')),
+                      );
+                      return;
+                    }
 
-                Navigator.pop(dialogContext, {'weight': weight, 'reps': reps});
-              },
-              icon: const Icon(Icons.save),
-              label: Text('Guardar serie $nextSetNumber/$plannedSetCount'),
-            ),
-          ],
+                    Navigator.pop(dialogContext, {'weight': weight, 'reps': reps});
+                  },
+                  icon: const Icon(Icons.save),
+                  label: Text('Guardar serie $nextSetNumber/$plannedSetCount'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -196,8 +318,8 @@ class UserRoutinesPage extends StatelessWidget {
       routineId: routineId,
       routineTitle: routineTitle,
       exercise: exercise,
-      weight: result['weight']!,
-      reps: result['reps']!,
+      weight: result['weight'] as double,
+      reps: result['reps'] as int,
       setNumber: nextSetNumber,
       plannedSetCount: plannedSetCount,
     );
