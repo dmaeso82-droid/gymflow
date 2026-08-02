@@ -5,6 +5,7 @@ import '../widgets/app_card.dart';
 import '../widgets/header_card.dart';
 import '../widgets/menu_action_card.dart';
 import '../widgets/profile_avatar.dart';
+import 'user_calendar_page.dart';
 import 'user_goals_page.dart';
 import 'user_history_page.dart';
 import 'user_measurements_page.dart';
@@ -89,6 +90,16 @@ class UserHomePage extends StatelessWidget {
                   userName: userName,
                   userEmail: userEmail,
                 ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            MenuActionCard(
+              icon: Icons.calendar_month,
+              title: 'Calendario',
+              subtitle: 'Ver la planificación semanal de entrenamientos.',
+              onTap: () => openPage(
+                context,
+                UserCalendarPage(gymId: gymId, userEmail: userEmail),
               ),
             ),
             const SizedBox(height: 12),

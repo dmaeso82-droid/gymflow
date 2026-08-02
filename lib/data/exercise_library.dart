@@ -1,3 +1,25 @@
+
+const String favoriteExerciseGroup = 'Favoritos';
+const String customExerciseOption = 'Personalizado';
+
+const List<String> favoriteExerciseNames = [
+  'Press banca con barra',
+  'Press inclinado con mancuernas',
+  'Jalón de pecho',
+  'Remo con barra',
+  'Dominadas pronas',
+  'Press militar con barra',
+  'Elevaciones laterales con mancuernas',
+  'Curl bíceps con barra Z',
+  'Curl martillo',
+  'Extensión tríceps en polea con cuerda',
+  'Sentadilla trasera',
+  'Prensa de piernas',
+  'Peso muerto rumano',
+  'Hip thrust con barra',
+  'Plancha frontal',
+];
+
 const Map<String, List<String>> exerciseLibrary = {
   'Pecho': [
     'Press banca con barra',
@@ -156,4 +178,11 @@ const Map<String, List<String>> exerciseLibrary = {
   ],
 };
 
-const String customExerciseOption = 'Personalizado';
+List<String> exerciseGroupsWithFavorites() {
+  return [favoriteExerciseGroup, ...exerciseLibrary.keys];
+}
+
+List<String> exercisesForGroup(String group) {
+  if (group == favoriteExerciseGroup) return favoriteExerciseNames;
+  return exerciseLibrary[group] ?? const [];
+}

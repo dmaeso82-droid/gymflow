@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import '../data/exercise_library.dart';
@@ -12,8 +13,8 @@ Future<ExerciseInput?> showExerciseSheet(
   final isEditing = initialExercise != null;
   final initialName = initialExercise?['name']?.toString() ?? '';
 
-  String selectedGroup = exerciseLibrary.keys.first;
-  String selectedExercise = exerciseLibrary[selectedGroup]!.first;
+  String selectedGroup = favoriteExerciseGroup;
+  String selectedExercise = favoriteExerciseNames.first;
   bool foundInitialExercise = false;
 
   if (initialName.trim().isNotEmpty) {
@@ -25,11 +26,16 @@ Future<ExerciseInput?> showExerciseSheet(
         break;
       }
     }
+
+    if (!foundInitialExercise && favoriteExerciseNames.contains(initialName.trim())) {
+      selectedGroup = favoriteExerciseGroup;
+      selectedExercise = initialName.trim();
+      foundInitialExercise = true;
+    }
   }
 
-  final nameController = TextEditingController(
-    text: foundInitialExercise ? '' : initialName,
-  );
+  final searchController = TextEditingController();
+  final nameController = TextEditingController(text: foundInitialExercise ? '' : initialName);
   final setsController = TextEditingController(text: initialExercise?['sets']?.toString() ?? '3');
   final repsController = TextEditingController(text: initialExercise?['reps']?.toString() ?? '10');
   final weightController = TextEditingController(text: initialExercise?['weight']?.toString() ?? '');
@@ -46,8 +52,14 @@ Future<ExerciseInput?> showExerciseSheet(
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setSheetState) {
+          final baseOptions = exercisesForGroup(selectedGroup);
+          final searchText = searchController.text.trim().toLowerCase();
+          final filteredOptions = baseOptions
+              .where((exercise) => exercise.toLowerCase().contains(searchText))
+              .toList();
+
           final exerciseOptions = [
-            ...exerciseLibrary[selectedGroup]!,
+            ...filteredOptions,
             customExerciseOption,
           ];
 
@@ -79,20 +91,31 @@ Future<ExerciseInput?> showExerciseSheet(
                       labelText: 'Grupo muscular',
                       border: OutlineInputBorder(),
                     ),
-                    items: exerciseLibrary.keys.map((group) {
-                      return DropdownMenuItem(
-                        value: group,
-                        child: Text(group),
-                      );
+                    items: exerciseGroupsWithFavorites().map((group) {
+                      return DropdownMenuItem(value: group, child: Text(group));
                     }).toList(),
                     onChanged: (value) {
                       if (value == null) return;
                       setSheetState(() {
                         selectedGroup = value;
-                        selectedExercise = exerciseLibrary[selectedGroup]!.first;
+                        final options = exercisesForGroup(selectedGroup);
+                        selectedExercise = options.isEmpty ? customExerciseOption : options.first;
                         nameController.clear();
+                        searchController.clear();
                       });
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
+                    onChanged: (_) => setSheetState(() {}),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: 'Buscar ejercicio',
+                      filled: true,
+                      fillColor: const Color(0xFF020617),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
@@ -103,10 +126,7 @@ Future<ExerciseInput?> showExerciseSheet(
                       border: OutlineInputBorder(),
                     ),
                     items: exerciseOptions.map((exercise) {
-                      return DropdownMenuItem(
-                        value: exercise,
-                        child: Text(exercise),
-                      );
+                      return DropdownMenuItem(value: exercise, child: Text(exercise));
                     }).toList(),
                     onChanged: (value) {
                       if (value == null) return;
@@ -185,6 +205,7 @@ Future<ExerciseInput?> showExerciseSheet(
     },
   );
 
+  searchController.dispose();
   nameController.dispose();
   setsController.dispose();
   repsController.dispose();

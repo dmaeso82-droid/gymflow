@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../widgets/header_card.dart';
 import '../widgets/menu_action_card.dart';
+import 'trainer_calendar_page.dart';
 import 'trainer_clients_page.dart';
 import 'trainer_goals_page.dart';
 import 'trainer_measurements_page.dart';
@@ -52,6 +53,13 @@ class TrainerHomePage extends StatelessWidget {
               title: 'Rutinas',
               subtitle: 'Crear rutinas y gestionar ejercicios por cliente.',
               onTap: () => openPage(context, TrainerRoutinesPage(gymId: gymId)),
+            ),
+            const SizedBox(height: 12),
+            MenuActionCard(
+              icon: Icons.calendar_month,
+              title: 'Calendario',
+              subtitle: 'Ver planificación semanal por cliente.',
+              onTap: () => openPage(context, TrainerCalendarPage(gymId: gymId)),
             ),
             const SizedBox(height: 12),
             MenuActionCard(

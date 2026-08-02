@@ -20,6 +20,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
   final routineTitleController = TextEditingController();
   String? selectedClientId;
   String searchText = '';
+  String selectedRoutineDay = 'Lunes';
 
   CollectionReference<Map<String, dynamic>> get clientsRef => FirebaseFirestore.instance
       .collection('gyms')
@@ -72,7 +73,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       'clientId': selectedClientDoc.id,
       'clientName': selectedClient['name'] ?? 'Sin cliente',
       'clientEmail': (selectedClient['email'] ?? '').toString().toLowerCase(),
-      'day': 'Nuevo día',
+      'day': selectedRoutineDay,
       'notes': 'Añade observaciones para el usuario.',
       'exercises': [],
       'createdAt': FieldValue.serverTimestamp(),
@@ -306,6 +307,29 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                         controller: routineTitleController,
                         label: 'Nombre de la rutina',
                         hint: 'Ej: Pecho y tríceps',
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: selectedRoutineDay,
+                        dropdownColor: const Color(0xFF0F172A),
+                        decoration: const InputDecoration(
+                          labelText: 'Día de entrenamiento',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'Lunes', child: Text('Lunes')),
+                          DropdownMenuItem(value: 'Martes', child: Text('Martes')),
+                          DropdownMenuItem(value: 'Miércoles', child: Text('Miércoles')),
+                          DropdownMenuItem(value: 'Jueves', child: Text('Jueves')),
+                          DropdownMenuItem(value: 'Viernes', child: Text('Viernes')),
+                          DropdownMenuItem(value: 'Sábado', child: Text('Sábado')),
+                          DropdownMenuItem(value: 'Domingo', child: Text('Domingo')),
+                          DropdownMenuItem(value: 'Sin día', child: Text('Sin día')),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => selectedRoutineDay = value);
+                        },
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
