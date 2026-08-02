@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/section_title.dart';
-import 'user_achievements.dart';
+import '../pages/user_routines_page.dart';
 
 class UserDashboard extends StatelessWidget {
   final String gymId;
@@ -173,6 +173,70 @@ class UserDashboard extends StatelessWidget {
                   const SizedBox(height: 8),
                   const Text('Tu resumen principal para saber qué toca hoy y cómo vas progresando.', style: TextStyle(color: Colors.white70)),
                   const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF020617),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.greenAccent.withOpacity(0.28)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: Colors.greenAccent.withOpacity(0.14),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(Icons.fitness_center, color: Colors.greenAccent),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'ENTRENAR AHORA',
+                                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Abre tus rutinas activas y registra tus series.',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => UserRoutinesPage(
+                                  gymId: gymId,
+                                  userId: userId,
+                                  userName: userName,
+                                  userEmail: userEmail,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text('Ver mis rutinas'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: goalsRef.where('clientEmail', isEqualTo: userEmail.toLowerCase()).snapshots(),
                     builder: (context, goalsSnapshot) {
@@ -204,8 +268,6 @@ class UserDashboard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            UserAchievementsPanel(gymId: gymId, userId: userId, userEmail: userEmail, compact: true),
             const SizedBox(height: 16),
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: routinesRef.where('clientEmail', isEqualTo: userEmail.toLowerCase()).snapshots(),

@@ -7,6 +7,7 @@ import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/routine_card.dart';
 import '../widgets/section_title.dart';
+import 'trainer_template_builder_page.dart';
 
 class TrainerRoutinesPage extends StatefulWidget {
   final String gymId;
@@ -33,6 +34,12 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       .collection('gyms')
       .doc(widget.gymId)
       .collection('routines');
+
+
+  CollectionReference<Map<String, dynamic>> get customTemplatesRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('routine_templates');
 
   @override
   void dispose() {
@@ -143,101 +150,143 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
     }
   }
 
+  String templateDisplayName(Map<String, dynamic> template, String source) {
+    final name = template['name']?.toString().trim();
+    if (name != null && name.isNotEmpty) return name;
+    final objective = template['objective']?.toString() ?? 'Plantilla';
+    final frequency = template['frequency']?.toString() ?? '-';
+    final level = template['level']?.toString() ?? '-';
+    return source == 'system'
+        ? '$objective ${frequency}D · $level'
+        : '$objective ${frequency}D · $level personalizada';
+  }
+
+  Future<List<Map<String, dynamic>>> loadAutomaticTemplateOptions() async {
+    final options = <Map<String, dynamic>>[];
+
+    for (final objective in templateObjectives()) {
+      for (final frequency in templateFrequenciesForObjective(objective)) {
+        for (final level in templateLevelsForObjectiveAndFrequency(objective, frequency)) {
+          final template = findRoutineTemplate(
+            objective: objective,
+            frequency: frequency,
+            level: level,
+          );
+          if (template == null) continue;
+          options.add({
+            'id': 'system_${objective}_${frequency}_$level',
+            'source': 'system',
+            'name': templateDisplayName(template, 'system'),
+            'template': template,
+          });
+        }
+      }
+    }
+
+    final customSnapshot = await customTemplatesRef.orderBy('createdAt', descending: true).get();
+    for (final doc in customSnapshot.docs) {
+      final data = doc.data();
+      final days = data['days'];
+      if (days is! List || days.isEmpty) continue;
+      options.insert(0, {
+        'id': doc.id,
+        'source': 'custom',
+        'name': templateDisplayName(data, 'custom'),
+        'template': {...data, 'id': doc.id},
+      });
+    }
+
+    return options;
+  }
+
+  void openTemplateManager() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TrainerTemplateBuilderPage(gymId: widget.gymId),
+      ),
+    );
+  }
+
   Future<void> generateAutomaticRoutine(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> clients,
   ) async {
     final selectedClientDoc = selectedClientDocument(clients);
-
     if (selectedClientDoc == null) {
       showSnack('Selecciona un cliente.');
       return;
     }
 
-    var selectedObjective = templateObjectives().first;
-    var selectedFrequency = templateFrequenciesForObjective(selectedObjective).first;
-    var selectedLevel = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency).first;
+    final options = await loadAutomaticTemplateOptions();
+    if (options.isEmpty) {
+      showSnack('No hay plantillas disponibles.');
+      return;
+    }
+
+    var selectedTemplateId = options.first['id'].toString();
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final frequencies = templateFrequenciesForObjective(selectedObjective);
-            if (!frequencies.contains(selectedFrequency)) {
-              selectedFrequency = frequencies.first;
-            }
-
-            final levels = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency);
-            if (!levels.contains(selectedLevel)) {
-              selectedLevel = levels.first;
-            }
+            final selectedOption = options.firstWhere(
+              (option) => option['id'].toString() == selectedTemplateId,
+              orElse: () => options.first,
+            );
+            final selectedTemplate = Map<String, dynamic>.from(selectedOption['template'] as Map);
+            final source = selectedOption['source'].toString() == 'custom' ? 'Personalizada' : 'Sistema';
+            final days = List<dynamic>.from(selectedTemplate['days'] ?? []);
 
             return AlertDialog(
               backgroundColor: const Color(0xFF0F172A),
               title: const Text('Generar rutina automática'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: selectedObjective,
-                    dropdownColor: const Color(0xFF0F172A),
-                    decoration: const InputDecoration(
-                      labelText: 'Objetivo',
-                      border: OutlineInputBorder(),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: selectedTemplateId,
+                      dropdownColor: const Color(0xFF0F172A),
+                      decoration: const InputDecoration(
+                        labelText: 'Plantilla',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: options.map((option) {
+                        final name = option['name'].toString();
+                        final optionSource = option['source'].toString() == 'custom' ? 'Personalizada' : 'Sistema';
+                        return DropdownMenuItem(
+                          value: option['id'].toString(),
+                          child: Text('$name · $optionSource'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() => selectedTemplateId = value);
+                      },
                     ),
-                    items: templateObjectives().map((objective) {
-                      return DropdownMenuItem(value: objective, child: Text(objective));
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() {
-                        selectedObjective = value;
-                        selectedFrequency = templateFrequenciesForObjective(selectedObjective).first;
-                        selectedLevel = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency).first;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: selectedFrequency,
-                    dropdownColor: const Color(0xFF0F172A),
-                    decoration: const InputDecoration(
-                      labelText: 'Días por semana',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 12),
+                    Text(
+                      '$source · ${days.length} días · ${selectedTemplate['level'] ?? 'Sin nivel'}',
+                      style: const TextStyle(color: Colors.white70),
                     ),
-                    items: frequencies.map((frequency) {
-                      return DropdownMenuItem(value: frequency, child: Text('$frequency días'));
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() {
-                        selectedFrequency = value;
-                        selectedLevel = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency).first;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: selectedLevel,
-                    dropdownColor: const Color(0xFF0F172A),
-                    decoration: const InputDecoration(
-                      labelText: 'Nivel',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Al generar, se archivarán las rutinas activas anteriores del cliente y se crearán nuevas rutinas desde esta plantilla.',
+                      style: TextStyle(color: Colors.white60),
                     ),
-                    items: levels.map((level) {
-                      return DropdownMenuItem(value: level, child: Text(level));
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() => selectedLevel = value);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Se crearán varias rutinas semanales para el cliente seleccionado. Después podrás editar ejercicios, días y notas.',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        openTemplateManager();
+                      },
+                      icon: const Icon(Icons.tune),
+                      label: const Text('Gestionar plantillas'),
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -246,11 +295,11 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                 ),
                 FilledButton.icon(
                   onPressed: () {
-                    Navigator.pop(dialogContext, {
-                      'objective': selectedObjective,
-                      'frequency': selectedFrequency,
-                      'level': selectedLevel,
-                    });
+                    final option = options.firstWhere(
+                      (item) => item['id'].toString() == selectedTemplateId,
+                      orElse: () => options.first,
+                    );
+                    Navigator.pop(dialogContext, option);
                   },
                   icon: const Icon(Icons.auto_awesome),
                   label: const Text('Generar'),
@@ -264,14 +313,10 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
 
     if (result == null) return;
 
-    final template = findRoutineTemplate(
-      objective: result['objective'].toString(),
-      frequency: result['frequency'] as int,
-      level: result['level'].toString(),
-    );
-
-    if (template == null) {
-      showSnack('No se ha encontrado una plantilla compatible.');
+    final template = Map<String, dynamic>.from(result['template'] as Map);
+    final daysRaw = template['days'];
+    if (daysRaw is! List || daysRaw.isEmpty) {
+      showSnack('La plantilla seleccionada no tiene días configurados.');
       return;
     }
 
@@ -280,38 +325,50 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       clientId: selectedClientDoc.id,
       clientEmail: (selectedClient['email'] ?? '').toString(),
     );
-    final days = List<Map<String, dynamic>>.from(template['days'] as List);
-    days.sort((a, b) => (a['dayOrder'] as int).compareTo(b['dayOrder'] as int));
-    final batch = FirebaseFirestore.instance.batch();
 
+    final days = List<Map<String, dynamic>>.from(
+      daysRaw.map((day) => Map<String, dynamic>.from(day as Map)),
+    );
+    days.sort((a, b) {
+      final aOrder = a['dayOrder'] is int ? a['dayOrder'] as int : routineDayOrder((a['day'] ?? '').toString());
+      final bOrder = b['dayOrder'] is int ? b['dayOrder'] as int : routineDayOrder((b['day'] ?? '').toString());
+      return aOrder.compareTo(bOrder);
+    });
+
+    final batch = FirebaseFirestore.instance.batch();
     for (final day in days) {
-      final exercises = List<Map<String, dynamic>>.from(day['exercises'] as List).map((exercise) {
+      final exerciseList = day['exercises'] is List ? List<dynamic>.from(day['exercises'] as List) : <dynamic>[];
+      final exercises = exerciseList.map((item) {
+        final exercise = Map<String, dynamic>.from(item as Map);
         return {
-          'id': DateTime.now().microsecondsSinceEpoch.toString() + exercise['name'].toString(),
-          'name': exercise['name'],
-          'sets': exercise['sets'],
-          'reps': exercise['reps'],
-          'weight': exercise['weight'],
-          'rest': exercise['rest'],
+          'id': DateTime.now().microsecondsSinceEpoch.toString() + (exercise['name'] ?? '').toString(),
+          'name': exercise['name'] ?? 'Ejercicio',
+          'sets': exercise['sets'] ?? 3,
+          'reps': exercise['reps'] ?? '10',
+          'weight': exercise['weight'] ?? '',
+          'rest': exercise['rest'] ?? '60 s',
           'done': false,
+          'completedSets': 0,
         };
       }).toList();
 
       final docRef = routinesRef.doc();
       batch.set(docRef, {
-        'title': day['title'],
+        'title': day['title'] ?? '${template['name'] ?? 'Rutina automática'} · ${day['day'] ?? 'Sin día'}',
         'clientId': selectedClientDoc.id,
         'clientName': selectedClient['name'] ?? 'Sin cliente',
         'clientEmail': (selectedClient['email'] ?? '').toString().toLowerCase(),
-        'day': day['day'],
-        'dayOrder': day['dayOrder'] ?? routineDayOrder(day['day'].toString()),
-        'notes': day['notes'],
+        'day': day['day'] ?? 'Sin día',
+        'dayOrder': day['dayOrder'] ?? routineDayOrder((day['day'] ?? '').toString()),
+        'notes': day['notes'] ?? 'Rutina generada automáticamente desde plantilla.',
         'exercises': exercises,
         'createdAt': FieldValue.serverTimestamp(),
         'generated': true,
-        'generatedObjective': result['objective'],
-        'generatedFrequency': result['frequency'],
-        'generatedLevel': result['level'],
+        'generatedTemplateName': template['name'] ?? templateDisplayName(template, result['source'].toString()),
+        'generatedTemplateSource': result['source'],
+        'generatedObjective': template['objective'],
+        'generatedFrequency': template['frequency'],
+        'generatedLevel': template['level'],
         'status': 'active',
       });
     }
@@ -411,7 +468,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
   }
 
   Future<void> addExercise(String routineId, List<dynamic> currentExercises) async {
-    final result = await showExerciseSheet(context);
+    final result = await showExerciseSheet(context, gymId: widget.gymId);
     if (result == null) return;
 
     final newExercise = {
@@ -443,7 +500,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       return;
     }
 
-    final result = await showExerciseSheet(context, initialExercise: currentExercise);
+    final result = await showExerciseSheet(context, gymId: widget.gymId, initialExercise: currentExercise);
     if (result == null) return;
 
     final updated = exercises.map((item) {
@@ -539,52 +596,28 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle(icon: Icons.playlist_add, title: 'Crear rutina'),
+                      const SectionTitle(icon: Icons.auto_awesome, title: 'Rutinas automáticas'),
                       const SizedBox(height: 12),
-                      AppTextField(
-                        controller: routineTitleController,
-                        label: 'Nombre de la rutina',
-                        hint: 'Ej: Pecho y tríceps',
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: selectedRoutineDay,
-                        dropdownColor: const Color(0xFF0F172A),
-                        decoration: const InputDecoration(
-                          labelText: 'Día de entrenamiento',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'Lunes', child: Text('Lunes')),
-                          DropdownMenuItem(value: 'Martes', child: Text('Martes')),
-                          DropdownMenuItem(value: 'Miércoles', child: Text('Miércoles')),
-                          DropdownMenuItem(value: 'Jueves', child: Text('Jueves')),
-                          DropdownMenuItem(value: 'Viernes', child: Text('Viernes')),
-                          DropdownMenuItem(value: 'Sábado', child: Text('Sábado')),
-                          DropdownMenuItem(value: 'Domingo', child: Text('Domingo')),
-                          DropdownMenuItem(value: 'Sin día', child: Text('Sin día')),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setState(() => selectedRoutineDay = value);
-                        },
+                      const Text(
+                        'A partir de ahora las rutinas se crean desde plantillas. Configura tus plantillas y luego genera la rutina para el cliente seleccionado.',
+                        style: TextStyle(color: Colors.white70),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          onPressed: clients.isEmpty ? null : () => addRoutine(clients),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Crear rutina'),
+                          onPressed: clients.isEmpty ? null : () => generateAutomaticRoutine(clients),
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Text('Generar rutina automática'),
                         ),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          onPressed: clients.isEmpty ? null : () => generateAutomaticRoutine(clients),
-                          icon: const Icon(Icons.auto_awesome),
-                          label: const Text('Generar rutina automática'),
+                          onPressed: openTemplateManager,
+                          icon: const Icon(Icons.tune),
+                          label: const Text('Gestionar plantillas automáticas'),
                         ),
                       ),
                     ],

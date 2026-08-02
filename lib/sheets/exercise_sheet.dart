@@ -1,4 +1,5 @@
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../data/exercise_library.dart';
@@ -9,12 +10,30 @@ import '../widgets/section_title.dart';
 Future<ExerciseInput?> showExerciseSheet(
   BuildContext context, {
   Map<String, dynamic>? initialExercise,
+  String? gymId,
 }) async {
   final isEditing = initialExercise != null;
   final initialName = initialExercise?['name']?.toString() ?? '';
+  final canUseDynamicFavorites = gymId != null && gymId.trim().isNotEmpty;
+  final favoritesDoc = canUseDynamicFavorites
+      ? FirebaseFirestore.instance
+          .collection('gyms')
+          .doc(gymId)
+          .collection('settings')
+          .doc('exercise_favorites')
+      : null;
+
+  List<String> favoriteNames = List<String>.from(favoriteExerciseNames);
+  if (favoritesDoc != null) {
+    final snapshot = await favoritesDoc.get();
+    final names = snapshot.data()?['names'];
+    if (names is List) {
+      favoriteNames = names.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toSet().toList()..sort();
+    }
+  }
 
   String selectedGroup = favoriteExerciseGroup;
-  String selectedExercise = favoriteExerciseNames.first;
+  String selectedExercise = favoriteNames.isNotEmpty ? favoriteNames.first : allExerciseNames().first;
   bool foundInitialExercise = false;
 
   if (initialName.trim().isNotEmpty) {
@@ -26,8 +45,7 @@ Future<ExerciseInput?> showExerciseSheet(
         break;
       }
     }
-
-    if (!foundInitialExercise && favoriteExerciseNames.contains(initialName.trim())) {
+    if (!foundInitialExercise && favoriteNames.contains(initialName.trim())) {
       selectedGroup = favoriteExerciseGroup;
       selectedExercise = initialName.trim();
       foundInitialExercise = true;
@@ -45,6 +63,14 @@ Future<ExerciseInput?> showExerciseSheet(
     selectedExercise = customExerciseOption;
   }
 
+  Future<void> persistFavorites() async {
+    if (favoritesDoc == null) return;
+    await favoritesDoc.set({
+      'names': favoriteNames,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   final result = await showModalBottomSheet<ExerciseInput>(
     context: context,
     backgroundColor: const Color(0xFF0F172A),
@@ -52,19 +78,20 @@ Future<ExerciseInput?> showExerciseSheet(
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setSheetState) {
-          final baseOptions = exercisesForGroup(selectedGroup);
+          final baseOptions = selectedGroup == favoriteExerciseGroup
+              ? favoriteNames
+              : exercisesForGroup(selectedGroup, favoriteNames: favoriteNames);
           final searchText = searchController.text.trim().toLowerCase();
           final filteredOptions = baseOptions
               .where((exercise) => exercise.toLowerCase().contains(searchText))
               .toList();
-
           final exerciseOptions = [
             ...filteredOptions,
             customExerciseOption,
           ];
 
           if (!exerciseOptions.contains(selectedExercise)) {
-            selectedExercise = exerciseOptions.first;
+            selectedExercise = exerciseOptions.isEmpty ? customExerciseOption : exerciseOptions.first;
           }
 
           return Padding(
@@ -98,7 +125,9 @@ Future<ExerciseInput?> showExerciseSheet(
                       if (value == null) return;
                       setSheetState(() {
                         selectedGroup = value;
-                        final options = exercisesForGroup(selectedGroup);
+                        final options = selectedGroup == favoriteExerciseGroup
+                            ? favoriteNames
+                            : exercisesForGroup(selectedGroup, favoriteNames: favoriteNames);
                         selectedExercise = options.isEmpty ? customExerciseOption : options.first;
                         nameController.clear();
                         searchController.clear();
@@ -118,26 +147,71 @@ Future<ExerciseInput?> showExerciseSheet(
                     ),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: selectedExercise,
-                    dropdownColor: const Color(0xFF0F172A),
-                    decoration: const InputDecoration(
-                      labelText: 'Ejercicio',
-                      border: OutlineInputBorder(),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 260),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF020617),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white12),
                     ),
-                    items: exerciseOptions.map((exercise) {
-                      return DropdownMenuItem(value: exercise, child: Text(exercise));
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setSheetState(() {
-                        selectedExercise = value;
-                        if (selectedExercise != customExerciseOption) {
-                          nameController.clear();
-                        }
-                      });
-                    },
+                    child: exerciseOptions.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text('No hay ejercicios para mostrar.', style: TextStyle(color: Colors.white70)),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: exerciseOptions.length,
+                            itemBuilder: (context, index) {
+                              final exercise = exerciseOptions[index];
+                              final isCustom = exercise == customExerciseOption;
+                              final isSelected = selectedExercise == exercise;
+                              final isFavorite = favoriteNames.contains(exercise);
+
+                              return ListTile(
+                                selected: isSelected,
+                                selectedTileColor: Colors.greenAccent.withOpacity(0.08),
+                                title: Text(exercise),
+                                leading: isCustom
+                                    ? const Icon(Icons.edit, color: Colors.white54)
+                                    : IconButton(
+                                        tooltip: isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos',
+                                        icon: Icon(
+                                          isFavorite ? Icons.star : Icons.star_border,
+                                          color: isFavorite ? Colors.amberAccent : Colors.white54,
+                                        ),
+                                        onPressed: () async {
+                                          setSheetState(() {
+                                            if (isFavorite) {
+                                              favoriteNames.remove(exercise);
+                                            } else {
+                                              favoriteNames.add(exercise);
+                                              favoriteNames = favoriteNames.toSet().toList()..sort();
+                                            }
+                                          });
+                                          await persistFavorites();
+                                        },
+                                      ),
+                                trailing: isSelected ? const Icon(Icons.check, color: Colors.greenAccent) : null,
+                                onTap: () {
+                                  setSheetState(() {
+                                    selectedExercise = exercise;
+                                    if (selectedExercise != customExerciseOption) {
+                                      nameController.clear();
+                                    }
+                                  });
+                                },
+                              );
+                            },
+                          ),
                   ),
+                  if (selectedGroup == favoriteExerciseGroup && favoriteNames.isEmpty) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Marca ejercicios con la estrella para que aparezcan aquí.',
+                      style: TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                  ],
                   if (selectedExercise == customExerciseOption) ...[
                     const SizedBox(height: 12),
                     AppTextField(
@@ -179,9 +253,7 @@ Future<ExerciseInput?> showExerciseSheet(
                       final name = selectedExercise == customExerciseOption
                           ? nameController.text.trim()
                           : selectedExercise.trim();
-
                       if (name.isEmpty) return;
-
                       Navigator.pop(
                         context,
                         ExerciseInput(

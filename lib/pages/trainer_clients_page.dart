@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import '../constants.dart';
+import '../firebase_options.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/info_chip.dart';
@@ -44,6 +48,41 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  String temporaryPassword() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    return 'GymFlow_${timestamp.substring(timestamp.length - 6)}!';
+  }
+
+  Future<UserCredential?> createFirebaseClientAccount({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    FirebaseApp? secondaryApp;
+    try {
+      secondaryApp = await Firebase.initializeApp(
+        name: 'clientCreator_${DateTime.now().microsecondsSinceEpoch}',
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      final credential = await secondaryAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      await credential.user?.updateDisplayName(name);
+      await secondaryAuth.signOut();
+      return credential;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'email-already-in-use') {
+        return null;
+      }
+      rethrow;
+    } finally {
+      await secondaryApp?.delete();
+    }
+  }
+
   Future<void> addClient() async {
     final name = clientNameController.text.trim();
     final email = clientEmailController.text.trim().toLowerCase();
@@ -59,18 +98,74 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       return;
     }
 
-    await clientsRef.add({
+    final existingClient = await clientsRef.where('email', isEqualTo: email).limit(1).get();
+    if (existingClient.docs.isNotEmpty) {
+      showSnack('Ya existe un cliente con ese email.');
+      return;
+    }
+
+    final tempPassword = temporaryPassword();
+    UserCredential? createdCredential;
+
+    try {
+      createdCredential = await createFirebaseClientAccount(
+        name: name,
+        email: email,
+        password: tempPassword,
+      );
+    } on FirebaseAuthException catch (e) {
+      showSnack('No se pudo crear la cuenta de acceso: ${e.code}');
+      return;
+    } catch (e) {
+      showSnack('No se pudo crear la cuenta de acceso: $e');
+      return;
+    }
+
+    final uid = createdCredential?.user?.uid;
+    final db = FirebaseFirestore.instance;
+    final batch = db.batch();
+    final clientDoc = clientsRef.doc();
+
+    batch.set(clientDoc, {
       'name': name,
       'email': email,
       'goal': goal.isEmpty ? 'Objetivo pendiente' : goal,
       'level': 'Nuevo',
+      'authUid': uid ?? '',
+      'accountStatus': uid == null ? 'existing_auth_user' : 'invited',
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    if (uid != null) {
+      batch.set(db.collection('users').doc(uid), {
+        'name': name,
+        'email': email,
+        'role': 'user',
+        'gymId': widget.gymId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'createdByTrainer': true,
+      });
+
+      batch.set(db.collection('gyms').doc(widget.gymId).collection('members').doc(uid), {
+        'name': name,
+        'email': email,
+        'role': 'user',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      showSnack('Cliente creado. Se ha enviado un email para establecer la contraseña.');
+    } on FirebaseAuthException catch (e) {
+      showSnack('Cliente creado, pero no se pudo enviar el email de contraseña: ${e.code}');
+    }
 
     clientNameController.clear();
     clientEmailController.clear();
     clientGoalController.clear();
-    showSnack('Cliente creado.');
   }
 
   Future<void> editClient(String clientId, Map<String, dynamic> clientData) async {
@@ -218,7 +313,7 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
                     child: FilledButton.icon(
                       onPressed: addClient,
                       icon: const Icon(Icons.add),
-                      label: const Text('Crear cliente'),
+                      label: const Text('Crear cliente y enviar acceso'),
                     ),
                   ),
                 ],

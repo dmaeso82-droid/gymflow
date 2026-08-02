@@ -1,9 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:flutter/material.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/header_card.dart';
-import '../widgets/menu_action_card.dart';
 import '../widgets/profile_avatar.dart';
 import '../features/user_dashboard.dart';
 import 'user_achievements_page.dart';
@@ -13,8 +12,8 @@ import 'user_history_page.dart';
 import 'user_measurements_page.dart';
 import 'user_progress_page.dart';
 import 'user_records_page.dart';
-import 'user_routines_page.dart';
 import 'user_weekly_summary_page.dart';
+import 'settings_page.dart';
 
 class UserHomePage extends StatelessWidget {
   final String gymId;
@@ -39,13 +38,110 @@ class UserHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final actions = [
+      QuickAction(
+        icon: Icons.military_tech,
+        title: 'Logros',
+        subtitle: 'Medallas',
+        onTap: () => openPage(
+          context,
+          UserAchievementsPage(
+            gymId: gymId,
+            userId: userId,
+            userEmail: userEmail,
+          ),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.calendar_month,
+        title: 'Calendario',
+        subtitle: 'Semana',
+        onTap: () => openPage(
+          context,
+          UserCalendarPage(gymId: gymId, userEmail: userEmail),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.flag,
+        title: 'Objetivos',
+        subtitle: 'Pendientes',
+        onTap: () => openPage(
+          context,
+          UserGoalsPage(gymId: gymId, userEmail: userEmail),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.monitor_weight,
+        title: 'Progreso',
+        subtitle: 'Medidas',
+        onTap: () => openPage(
+          context,
+          UserMeasurementsPage(
+            gymId: gymId,
+            userId: userId,
+            userName: userName,
+            userEmail: userEmail,
+          ),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.calendar_view_week,
+        title: 'Resumen',
+        subtitle: 'Semanal',
+        onTap: () => openPage(
+          context,
+          UserWeeklySummaryPage(gymId: gymId, userId: userId),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.emoji_events,
+        title: 'Récords',
+        subtitle: 'Marcas',
+        onTap: () => openPage(
+          context,
+          UserRecordsPage(gymId: gymId, userId: userId),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.trending_up,
+        title: 'Evolución',
+        subtitle: 'Gráficas',
+        onTap: () => openPage(
+          context,
+          UserProgressPage(gymId: gymId, userId: userId),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.history,
+        title: 'Historial',
+        subtitle: 'Registros',
+        onTap: () => openPage(
+          context,
+          UserHistoryPage(gymId: gymId, userId: userId),
+        ),
+      ),
+      QuickAction(
+        icon: Icons.settings,
+        title: 'Cuenta',
+        subtitle: 'Ajustes',
+        onTap: () => openPage(
+          context,
+          SettingsPage(userEmail: userEmail),
+        ),
+      ),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: Text('GymFlow · $userName'),
         actions: [
           IconButton(
-            onPressed: () => FirebaseAuth.instance.signOut(),
-            icon: const Icon(Icons.logout),
+            tooltip: 'Configuración',
+            onPressed: () => openPage(
+              context,
+              SettingsPage(userEmail: userEmail),
+            ),
+            icon: const Icon(Icons.settings),
           ),
         ],
       ),
@@ -87,110 +183,126 @@ class UserHomePage extends StatelessWidget {
               userEmail: userEmail,
             ),
             const SizedBox(height: 16),
-            MenuActionCard(
-              icon: Icons.military_tech,
-              title: 'Mis logros',
-              subtitle: 'Ver medallas, rachas y logros desbloqueados.',
-              onTap: () => openPage(
-                context,
-                UserAchievementsPage(
-                  gymId: gymId,
-                  userId: userId,
-                  userEmail: userEmail,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.fitness_center,
-              title: 'Mis rutinas',
-              subtitle: 'Ver rutinas asignadas y registrar series.',
-              onTap: () => openPage(
-                context,
-                UserRoutinesPage(
-                  gymId: gymId,
-                  userId: userId,
-                  userName: userName,
-                  userEmail: userEmail,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.calendar_month,
-              title: 'Calendario',
-              subtitle: 'Ver la planificación semanal de entrenamientos.',
-              onTap: () => openPage(
-                context,
-                UserCalendarPage(gymId: gymId, userEmail: userEmail),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.flag,
-              title: 'Mis objetivos',
-              subtitle: 'Consultar objetivos definidos por el entrenador.',
-              onTap: () => openPage(
-                context,
-                UserGoalsPage(gymId: gymId, userEmail: userEmail),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.monitor_weight,
-              title: 'Progreso físico',
-              subtitle: 'Registrar peso corporal y medidas.',
-              onTap: () => openPage(
-                context,
-                UserMeasurementsPage(
-                  gymId: gymId,
-                  userId: userId,
-                  userName: userName,
-                  userEmail: userEmail,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.calendar_view_week,
-              title: 'Resumen semanal',
-              subtitle: 'Ver actividad registrada esta semana.',
-              onTap: () => openPage(
-                context,
-                UserWeeklySummaryPage(gymId: gymId, userId: userId),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.emoji_events,
-              title: 'Récords personales',
-              subtitle: 'Consultar mejores marcas por ejercicio.',
-              onTap: () => openPage(
-                context,
-                UserRecordsPage(gymId: gymId, userId: userId),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.trending_up,
-              title: 'Evolución',
-              subtitle: 'Ver gráficas de progreso por ejercicio.',
-              onTap: () => openPage(
-                context,
-                UserProgressPage(gymId: gymId, userId: userId),
-              ),
-            ),
-            const SizedBox(height: 12),
-            MenuActionCard(
-              icon: Icons.history,
-              title: 'Historial',
-              subtitle: 'Editar o eliminar entrenamientos registrados.',
-              onTap: () => openPage(
-                context,
-                UserHistoryPage(gymId: gymId, userId: userId),
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.apps, color: Colors.greenAccent),
+                      SizedBox(width: 8),
+                      Text(
+                        'Accesos rápidos',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  QuickActionGrid(actions: actions),
+                ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class QuickAction {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const QuickAction({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+}
+
+class QuickActionGrid extends StatelessWidget {
+  final List<QuickAction> actions;
+
+  const QuickActionGrid({super.key, required this.actions});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final columns = maxWidth < 520 ? 2 : 3;
+        const spacing = 10.0;
+        final tileWidth = (maxWidth - spacing * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: actions.map((action) {
+            return SizedBox(
+              width: tileWidth,
+              child: QuickActionTile(action: action),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+class QuickActionTile extends StatelessWidget {
+  final QuickAction action;
+
+  const QuickActionTile({super.key, required this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF020617),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: action.onTap,
+        child: Container(
+			constraints: const BoxConstraints(
+				minHeight: 104,
+			),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(action.icon, color: Colors.greenAccent, size: 21),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                action.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                action.subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
+              ),
+            ],
+          ),
         ),
       ),
     );

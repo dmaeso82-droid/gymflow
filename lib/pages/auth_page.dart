@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -17,10 +18,8 @@ class _AuthPageState extends State<AuthPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final nameController = TextEditingController();
-
   bool registerMode = false;
   bool loading = false;
-  String selectedRole = 'trainer';
 
   @override
   void dispose() {
@@ -53,14 +52,13 @@ class _AuthPageState extends State<AuthPage> {
           email: email,
           password: password,
         );
-
         final uid = credential.user!.uid;
         final db = FirebaseFirestore.instance;
 
         await db.collection('users').doc(uid).set({
           'name': name,
           'email': email,
-          'role': selectedRole,
+          'role': 'trainer',
           'gymId': demoGymId,
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -70,15 +68,10 @@ class _AuthPageState extends State<AuthPage> {
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        await db
-            .collection('gyms')
-            .doc(demoGymId)
-            .collection('members')
-            .doc(uid)
-            .set({
+        await db.collection('gyms').doc(demoGymId).collection('members').doc(uid).set({
           'name': name,
           'email': email,
-          'role': selectedRole,
+          'role': 'trainer',
           'createdAt': FieldValue.serverTimestamp(),
         });
       } else {
@@ -87,6 +80,26 @@ class _AuthPageState extends State<AuthPage> {
           password: password,
         );
       }
+    } on FirebaseAuthException catch (e) {
+      showSnack(authMessage(e.code));
+    } catch (e) {
+      showSnack('Error: $e');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> resetPassword() async {
+    final email = emailController.text.trim().toLowerCase();
+    if (email.isEmpty) {
+      showSnack('Introduce el email para recuperar la contraseña.');
+      return;
+    }
+
+    setState(() => loading = true);
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      showSnack('Te hemos enviado un correo para restablecer la contraseña.');
     } on FirebaseAuthException catch (e) {
       showSnack(authMessage(e.code));
     } catch (e) {
@@ -139,29 +152,18 @@ class _AuthPageState extends State<AuthPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      registerMode ? 'Crear cuenta' : 'Iniciar sesión',
+                      registerMode ? 'Crear cuenta de entrenador' : 'Iniciar sesión',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 24),
                     if (registerMode) ...[
-                      AppTextField(controller: nameController, label: 'Nombre'),
+                      AppTextField(controller: nameController, label: 'Nombre del entrenador'),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: selectedRole,
-                        dropdownColor: const Color(0xFF0F172A),
-                        decoration: const InputDecoration(
-                          labelText: 'Rol',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'trainer', child: Text('Entrenador')),
-                          DropdownMenuItem(value: 'user', child: Text('Usuario')),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setState(() => selectedRole = value);
-                        },
+                      const Text(
+                        'Los usuarios/clientes se crean desde la cuenta del entrenador.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white60, fontSize: 12),
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -186,12 +188,17 @@ class _AuthPageState extends State<AuthPage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.login),
-                      label: Text(registerMode ? 'Crear cuenta' : 'Entrar'),
+                      label: Text(registerMode ? 'Crear cuenta de entrenador' : 'Entrar'),
                     ),
                     TextButton(
                       onPressed: loading ? null : () => setState(() => registerMode = !registerMode),
-                      child: Text(registerMode ? 'Ya tengo cuenta' : 'Crear cuenta nueva'),
+                      child: Text(registerMode ? 'Ya tengo cuenta' : 'Registrarme como entrenador'),
                     ),
+                    if (!registerMode)
+                      TextButton(
+                        onPressed: loading ? null : resetPassword,
+                        child: const Text('¿Has olvidado la contraseña?'),
+                      ),
                   ],
                 ),
               ),

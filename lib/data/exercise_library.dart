@@ -182,7 +182,19 @@ List<String> exerciseGroupsWithFavorites() {
   return [favoriteExerciseGroup, ...exerciseLibrary.keys];
 }
 
-List<String> exercisesForGroup(String group) {
-  if (group == favoriteExerciseGroup) return favoriteExerciseNames;
+List<String> exercisesForGroup(String group, {List<String>? favoriteNames}) {
+  if (group == favoriteExerciseGroup) {
+    if (favoriteNames != null && favoriteNames.isNotEmpty) return favoriteNames;
+    return favoriteExerciseNames;
+  }
   return exerciseLibrary[group] ?? const [];
 }
+
+List<String> allExerciseNames() {
+  final names = <String>{};
+  for (final exercises in exerciseLibrary.values) {
+    names.addAll(exercises);
+  }
+  return names.toList()..sort();
+}
+
