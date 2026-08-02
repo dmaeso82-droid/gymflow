@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 import 'info_chip.dart';
@@ -18,21 +19,45 @@ class ExerciseTile extends StatelessWidget {
     this.onDelete,
   });
 
+  int intValue(dynamic value, {int fallback = 0}) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+    final text = value?.toString() ?? '';
+    final match = RegExp(r'\d+').firstMatch(text);
+    return int.tryParse(match?.group(0) ?? '') ?? fallback;
+  }
+
+  int totalSets() {
+    final parsed = intValue(exercise['sets'], fallback: 1);
+    return parsed <= 0 ? 1 : parsed;
+  }
+
+  int completedSets() {
+    final total = totalSets();
+    final rawCompleted = intValue(exercise['completedSets'], fallback: -1);
+
+    if (rawCompleted >= 0) return rawCompleted.clamp(0, total).toInt();
+    if (exercise['done'] == true) return total;
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final done = exercise['done'] == true;
+    final total = totalSets();
+    final completed = completedSets();
+    final done = completed >= total || exercise['done'] == true;
     final name = exercise['name'] as String? ?? 'Ejercicio';
-    final sets = exercise['sets']?.toString() ?? '-';
     final reps = exercise['reps']?.toString() ?? '-';
     final weight = exercise['weight']?.toString() ?? '';
     final rest = exercise['rest']?.toString() ?? '-';
+    final progressValue = total == 0 ? 0.0 : (completed / total).clamp(0, 1).toDouble();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: const Color(0xFF020617),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: done ? Colors.greenAccent.withOpacity(0.28) : Colors.white10),
       ),
       child: ListTile(
         onTap: onToggle,
@@ -53,14 +78,29 @@ class ExerciseTile extends StatelessWidget {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              InfoChip(text: '$sets series'),
-              InfoChip(text: '$reps reps'),
-              if (weight.trim().isNotEmpty) InfoChip(text: weight),
-              InfoChip(text: 'Descanso $rest'),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  InfoChip(text: '$completed/$total series'),
+                  InfoChip(text: '$reps reps'),
+                  if (weight.trim().isNotEmpty) InfoChip(text: weight),
+                  InfoChip(text: 'Descanso $rest'),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: progressValue,
+                  minHeight: 6,
+                  backgroundColor: Colors.white12,
+                  color: done ? Colors.greenAccent : Colors.lightGreenAccent,
+                ),
+              ),
             ],
           ),
         ),

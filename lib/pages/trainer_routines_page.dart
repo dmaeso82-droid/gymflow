@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../data/routine_templates.dart';
 import '../sheets/exercise_sheet.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
@@ -21,6 +22,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
   String? selectedClientId;
   String searchText = '';
   String selectedRoutineDay = 'Lunes';
+  bool showArchivedRoutines = false;
 
   CollectionReference<Map<String, dynamic>> get clientsRef => FirebaseFirestore.instance
       .collection('gyms')
@@ -40,6 +42,28 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
 
   void showSnack(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+
+  int routineDayOrder(String day) {
+    switch (day) {
+      case 'Lunes':
+        return 1;
+      case 'Martes':
+        return 2;
+      case 'Miércoles':
+        return 3;
+      case 'Jueves':
+        return 4;
+      case 'Viernes':
+        return 5;
+      case 'Sábado':
+        return 6;
+      case 'Domingo':
+        return 7;
+      default:
+        return 99;
+    }
   }
 
   QueryDocumentSnapshot<Map<String, dynamic>>? selectedClientDocument(
@@ -74,13 +98,226 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       'clientName': selectedClient['name'] ?? 'Sin cliente',
       'clientEmail': (selectedClient['email'] ?? '').toString().toLowerCase(),
       'day': selectedRoutineDay,
+      'dayOrder': routineDayOrder(selectedRoutineDay),
       'notes': 'Añade observaciones para el usuario.',
       'exercises': [],
       'createdAt': FieldValue.serverTimestamp(),
+      'status': 'active',
     });
 
     routineTitleController.clear();
     showSnack('Rutina creada.');
+  }
+
+
+
+  Future<void> archiveActiveRoutinesForClient({
+    required String clientId,
+    required String clientEmail,
+  }) async {
+    final normalizedEmail = clientEmail.toLowerCase().trim();
+    final existingRoutines = await routinesRef.get();
+    final batch = FirebaseFirestore.instance.batch();
+    var routinesToArchive = 0;
+
+    for (final routine in existingRoutines.docs) {
+      final data = routine.data();
+      final routineClientId = data['clientId']?.toString() ?? '';
+      final routineClientEmail = (data['clientEmail'] ?? '').toString().toLowerCase().trim();
+      final status = (data['status'] ?? 'active').toString();
+      final belongsToClient = routineClientId == clientId ||
+          (normalizedEmail.isNotEmpty && routineClientEmail == normalizedEmail);
+
+      if (belongsToClient && status != 'archived') {
+        routinesToArchive++;
+        batch.update(routine.reference, {
+          'status': 'archived',
+          'archivedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    if (routinesToArchive > 0) {
+      await batch.commit();
+    }
+  }
+
+  Future<void> generateAutomaticRoutine(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> clients,
+  ) async {
+    final selectedClientDoc = selectedClientDocument(clients);
+
+    if (selectedClientDoc == null) {
+      showSnack('Selecciona un cliente.');
+      return;
+    }
+
+    var selectedObjective = templateObjectives().first;
+    var selectedFrequency = templateFrequenciesForObjective(selectedObjective).first;
+    var selectedLevel = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency).first;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final frequencies = templateFrequenciesForObjective(selectedObjective);
+            if (!frequencies.contains(selectedFrequency)) {
+              selectedFrequency = frequencies.first;
+            }
+
+            final levels = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency);
+            if (!levels.contains(selectedLevel)) {
+              selectedLevel = levels.first;
+            }
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF0F172A),
+              title: const Text('Generar rutina automática'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: selectedObjective,
+                    dropdownColor: const Color(0xFF0F172A),
+                    decoration: const InputDecoration(
+                      labelText: 'Objetivo',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: templateObjectives().map((objective) {
+                      return DropdownMenuItem(value: objective, child: Text(objective));
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() {
+                        selectedObjective = value;
+                        selectedFrequency = templateFrequenciesForObjective(selectedObjective).first;
+                        selectedLevel = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency).first;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: selectedFrequency,
+                    dropdownColor: const Color(0xFF0F172A),
+                    decoration: const InputDecoration(
+                      labelText: 'Días por semana',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: frequencies.map((frequency) {
+                      return DropdownMenuItem(value: frequency, child: Text('$frequency días'));
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() {
+                        selectedFrequency = value;
+                        selectedLevel = templateLevelsForObjectiveAndFrequency(selectedObjective, selectedFrequency).first;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedLevel,
+                    dropdownColor: const Color(0xFF0F172A),
+                    decoration: const InputDecoration(
+                      labelText: 'Nivel',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: levels.map((level) {
+                      return DropdownMenuItem(value: level, child: Text(level));
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => selectedLevel = value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Se crearán varias rutinas semanales para el cliente seleccionado. Después podrás editar ejercicios, días y notas.',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogContext, {
+                      'objective': selectedObjective,
+                      'frequency': selectedFrequency,
+                      'level': selectedLevel,
+                    });
+                  },
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Generar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    final template = findRoutineTemplate(
+      objective: result['objective'].toString(),
+      frequency: result['frequency'] as int,
+      level: result['level'].toString(),
+    );
+
+    if (template == null) {
+      showSnack('No se ha encontrado una plantilla compatible.');
+      return;
+    }
+
+    final selectedClient = selectedClientDoc.data();
+    await archiveActiveRoutinesForClient(
+      clientId: selectedClientDoc.id,
+      clientEmail: (selectedClient['email'] ?? '').toString(),
+    );
+    final days = List<Map<String, dynamic>>.from(template['days'] as List);
+    days.sort((a, b) => (a['dayOrder'] as int).compareTo(b['dayOrder'] as int));
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final day in days) {
+      final exercises = List<Map<String, dynamic>>.from(day['exercises'] as List).map((exercise) {
+        return {
+          'id': DateTime.now().microsecondsSinceEpoch.toString() + exercise['name'].toString(),
+          'name': exercise['name'],
+          'sets': exercise['sets'],
+          'reps': exercise['reps'],
+          'weight': exercise['weight'],
+          'rest': exercise['rest'],
+          'done': false,
+        };
+      }).toList();
+
+      final docRef = routinesRef.doc();
+      batch.set(docRef, {
+        'title': day['title'],
+        'clientId': selectedClientDoc.id,
+        'clientName': selectedClient['name'] ?? 'Sin cliente',
+        'clientEmail': (selectedClient['email'] ?? '').toString().toLowerCase(),
+        'day': day['day'],
+        'dayOrder': day['dayOrder'] ?? routineDayOrder(day['day'].toString()),
+        'notes': day['notes'],
+        'exercises': exercises,
+        'createdAt': FieldValue.serverTimestamp(),
+        'generated': true,
+        'generatedObjective': result['objective'],
+        'generatedFrequency': result['frequency'],
+        'generatedLevel': result['level'],
+        'status': 'active',
+      });
+    }
+
+    await batch.commit();
+    showSnack('Rutina automática generada para ${selectedClient['name'] ?? 'el cliente'}.');
   }
 
   Future<void> editRoutine(String routineId, Map<String, dynamic> routineData) async {
@@ -138,6 +375,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
     await routinesRef.doc(routineId).update({
       'title': result['title'],
       'day': result['day'],
+      'dayOrder': routineDayOrder(result['day'] ?? 'Sin día'),
       'notes': result['notes'],
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -340,6 +578,15 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                           label: const Text('Crear rutina'),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: clients.isEmpty ? null : () => generateAutomaticRoutine(clients),
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Text('Generar rutina automática'),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -358,6 +605,18 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                SwitchListTile(
+                  value: showArchivedRoutines,
+                  onChanged: (value) => setState(() => showArchivedRoutines = value),
+                  title: const Text('Mostrar rutinas archivadas'),
+                  subtitle: const Text(
+                    'Por defecto solo se muestran rutinas activas.',
+                    style: TextStyle(color: Colors.white60),
+                  ),
+                  activeColor: Colors.greenAccent,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: routinesRef.orderBy('createdAt', descending: true).snapshots(),
                   builder: (context, routineSnapshot) {
@@ -375,12 +634,26 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                     final routines = (routineSnapshot.data?.docs ?? []).where((doc) {
                       final data = doc.data();
                       if (data['clientId'] != selectedClientId) return false;
+                      final status = (data['status'] ?? 'active').toString();
+                      if (!showArchivedRoutines && status == 'archived') return false;
 
                       final clientName = (data['clientName'] ?? clientNames[data['clientId']] ?? '').toString();
                       final clientEmail = (data['clientEmail'] ?? '').toString();
                       final fullText = '${data['title'] ?? ''} $clientName $clientEmail'.toLowerCase();
                       return fullText.contains(searchText.toLowerCase());
                     }).toList();
+
+                    routines.sort((a, b) {
+                      final aOrder = a.data()['dayOrder'] is int
+                          ? a.data()['dayOrder'] as int
+                          : routineDayOrder((a.data()['day'] ?? '').toString());
+                      final bOrder = b.data()['dayOrder'] is int
+                          ? b.data()['dayOrder'] as int
+                          : routineDayOrder((b.data()['day'] ?? '').toString());
+                      final orderCompare = aOrder.compareTo(bOrder);
+                      if (orderCompare != 0) return orderCompare;
+                      return (a.data()['title'] ?? '').toString().compareTo((b.data()['title'] ?? '').toString());
+                    });
 
                     if (routines.isEmpty) {
                       return const AppCard(child: Text('El cliente seleccionado no tiene rutinas que coincidan con la búsqueda.'));
@@ -399,6 +672,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                           clientName: clientName,
                           exercises: exercises,
                           trainerMode: true,
+                          archived: (data['status'] ?? 'active').toString() == 'archived',
                           onAddExercise: () => addExercise(doc.id, exercises),
                           onEditRoutine: () => editRoutine(doc.id, data),
                           onDeleteRoutine: () => deleteRoutine(doc.id, data['title'] ?? 'Sin título'),

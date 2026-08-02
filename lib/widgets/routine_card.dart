@@ -1,8 +1,47 @@
+
 import 'package:flutter/material.dart';
 
-import '../utils/routine_progress.dart';
 import 'app_card.dart';
 import 'exercise_tile.dart';
+
+int intValue(dynamic value, {int fallback = 0}) {
+  if (value is int) return value;
+  if (value is num) return value.round();
+  final text = value?.toString() ?? '';
+  final match = RegExp(r'\d+').firstMatch(text);
+  return int.tryParse(match?.group(0) ?? '') ?? fallback;
+}
+
+int exerciseTotalSets(Map<String, dynamic> exercise) {
+  final parsed = intValue(exercise['sets'], fallback: 1);
+  return parsed <= 0 ? 1 : parsed;
+}
+
+int exerciseCompletedSets(Map<String, dynamic> exercise) {
+  final total = exerciseTotalSets(exercise);
+  final rawCompleted = intValue(exercise['completedSets'], fallback: -1);
+
+  if (rawCompleted >= 0) return rawCompleted.clamp(0, total).toInt();
+  if (exercise['done'] == true) return total;
+  return 0;
+}
+
+int routineProgressBySets(List<dynamic> exercises) {
+  if (exercises.isEmpty) return 0;
+
+  var totalSets = 0;
+  var completedSets = 0;
+
+  for (final item in exercises) {
+    final exercise = Map<String, dynamic>.from(item as Map);
+    final total = exerciseTotalSets(exercise);
+    totalSets += total;
+    completedSets += exerciseCompletedSets(exercise);
+  }
+
+  if (totalSets == 0) return 0;
+  return ((completedSets / totalSets) * 100).round().clamp(0, 100).toInt();
+}
 
 class RoutineCard extends StatelessWidget {
   final String title;
@@ -11,6 +50,7 @@ class RoutineCard extends StatelessWidget {
   final String clientName;
   final List<dynamic> exercises;
   final bool trainerMode;
+  final bool archived;
   final VoidCallback? onAddExercise;
   final VoidCallback? onEditRoutine;
   final VoidCallback? onDeleteRoutine;
@@ -27,6 +67,7 @@ class RoutineCard extends StatelessWidget {
     required this.clientName,
     required this.exercises,
     required this.trainerMode,
+    this.archived = false,
     required this.onToggleExercise,
     this.onAddExercise,
     this.onEditRoutine,
@@ -38,7 +79,7 @@ class RoutineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = routineProgress(exercises);
+    final progress = routineProgressBySets(exercises);
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: 16),
@@ -54,6 +95,15 @@ class RoutineCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                 ),
               ),
+              if (archived) ...[
+                const SizedBox(width: 8),
+                Chip(
+                  label: const Text('ARCHIVADA'),
+                  backgroundColor: Colors.orangeAccent.withOpacity(0.16),
+                  labelStyle: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                  side: BorderSide.none,
+                ),
+              ],
               if (trainerMode) ...[
                 IconButton(
                   tooltip: 'Editar rutina',
@@ -112,17 +162,11 @@ class RoutineCard extends StatelessWidget {
                 onToggle: () {
                   final exerciseId = exercise['id'] as String;
                   if (trainerMode) {
-                    onToggleExercise(
-                      exerciseId,
-                      !(exercise['done'] == true),
-                    );
+                    onToggleExercise(exerciseId, !(exercise['done'] == true));
                   } else if (onLogWorkout != null) {
                     onLogWorkout!(exerciseId);
                   } else {
-                    onToggleExercise(
-                      exerciseId,
-                      !(exercise['done'] == true),
-                    );
+                    onToggleExercise(exerciseId, !(exercise['done'] == true));
                   }
                 },
                 onEdit: onEditExercise == null ? null : () => onEditExercise!(exercise['id'] as String),

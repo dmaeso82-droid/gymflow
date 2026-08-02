@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -29,12 +30,64 @@ class UserRoutinesPage extends StatelessWidget {
       .doc(gymId)
       .collection('workout_logs');
 
+  bool isActiveRoutine(Map<String, dynamic> data) {
+    return (data['status'] ?? 'active').toString() != 'archived';
+  }
+
+  int intValue(dynamic value, {int fallback = 0}) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+    final text = value?.toString() ?? '';
+    final match = RegExp(r'\d+').firstMatch(text);
+    return int.tryParse(match?.group(0) ?? '') ?? fallback;
+  }
+
+  int totalSets(Map<String, dynamic> exercise) {
+    final parsed = intValue(exercise['sets'], fallback: 1);
+    return parsed <= 0 ? 1 : parsed;
+  }
+
+  int completedSets(Map<String, dynamic> exercise) {
+    final total = totalSets(exercise);
+    final rawCompleted = intValue(exercise['completedSets'], fallback: -1);
+
+    if (rawCompleted >= 0) {
+      return rawCompleted.clamp(0, total).toInt();
+    }
+
+    if (exercise['done'] == true) return total;
+    return 0;
+  }
+
+  int routineDayOrder(String day) {
+    switch (day) {
+      case 'Lunes':
+        return 1;
+      case 'Martes':
+        return 2;
+      case 'Miércoles':
+        return 3;
+      case 'Jueves':
+        return 4;
+      case 'Viernes':
+        return 5;
+      case 'Sábado':
+        return 6;
+      case 'Domingo':
+        return 7;
+      default:
+        return 99;
+    }
+  }
+
   Future<void> saveWorkoutLog({
     required String routineId,
     required String routineTitle,
     required Map<String, dynamic> exercise,
     required int weight,
     required int reps,
+    required int setNumber,
+    required int plannedSetCount,
   }) async {
     await logsRef.add({
       'userId': userId,
@@ -47,6 +100,8 @@ class UserRoutinesPage extends StatelessWidget {
       'plannedSets': exercise['sets'] ?? '',
       'plannedReps': exercise['reps'] ?? '',
       'plannedWeight': exercise['weight'] ?? '',
+      'setNumber': setNumber,
+      'plannedSetCount': plannedSetCount,
       'weight': weight,
       'reps': reps,
       'createdAt': FieldValue.serverTimestamp(),
@@ -64,6 +119,17 @@ class UserRoutinesPage extends StatelessWidget {
         .map((item) => Map<String, dynamic>.from(item as Map))
         .firstWhere((item) => item['id'] == exerciseId);
 
+    final plannedSetCount = totalSets(exercise);
+    final currentCompletedSets = completedSets(exercise);
+
+    if (currentCompletedSets >= plannedSetCount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Este ejercicio ya tiene todas las series registradas.')),
+      );
+      return;
+    }
+
+    final nextSetNumber = currentCompletedSets + 1;
     final weightText = (exercise['weight'] ?? '').toString();
     final repsText = (exercise['reps'] ?? '').toString();
     final suggestedWeight = RegExp(r'\d+').firstMatch(weightText)?.group(0) ?? '';
@@ -77,7 +143,7 @@ class UserRoutinesPage extends StatelessWidget {
       builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF0F172A),
-          title: Text('Registrar ${exercise['name'] ?? 'ejercicio'}'),
+          title: Text('Registrar ${exercise['name'] ?? 'ejercicio'} ($nextSetNumber/$plannedSetCount)'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -114,7 +180,7 @@ class UserRoutinesPage extends StatelessWidget {
                 Navigator.pop(dialogContext, {'weight': weight, 'reps': reps});
               },
               icon: const Icon(Icons.save),
-              label: const Text('Guardar serie'),
+              label: Text('Guardar serie $nextSetNumber/$plannedSetCount'),
             ),
           ],
         );
@@ -132,21 +198,46 @@ class UserRoutinesPage extends StatelessWidget {
       exercise: exercise,
       weight: result['weight']!,
       reps: result['reps']!,
+      setNumber: nextSetNumber,
+      plannedSetCount: plannedSetCount,
     );
 
-    await updateExerciseDone(routineId, exercises, exerciseId, true);
+    await updateExerciseSetProgress(routineId, exercises, exerciseId);
 
     if (context.mounted) {
+      final completedMessage = nextSetNumber >= plannedSetCount
+          ? 'Ejercicio completado. Has registrado $plannedSetCount/$plannedSetCount series.'
+          : 'Serie guardada. Llevas $nextSetNumber/$plannedSetCount series.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Serie guardada en el historial.')),
+        SnackBar(content: Text(completedMessage)),
       );
     }
+  }
+
+  Future<void> updateExerciseSetProgress(String routineId, List<dynamic> exercises, String exerciseId) async {
+    final updated = exercises.map((item) {
+      final map = Map<String, dynamic>.from(item as Map);
+      if (map['id'] == exerciseId) {
+        final plannedSetCount = totalSets(map);
+        final currentCompletedSets = completedSets(map);
+        final nextCompletedSets = (currentCompletedSets + 1).clamp(0, plannedSetCount).toInt();
+        map['completedSets'] = nextCompletedSets;
+        map['done'] = nextCompletedSets >= plannedSetCount;
+      }
+      return map;
+    }).toList();
+
+    await routinesRef.doc(routineId).update({'exercises': updated});
   }
 
   Future<void> updateExerciseDone(String routineId, List<dynamic> exercises, String exerciseId, bool done) async {
     final updated = exercises.map((item) {
       final map = Map<String, dynamic>.from(item as Map);
-      if (map['id'] == exerciseId) map['done'] = done;
+      if (map['id'] == exerciseId) {
+        final plannedSetCount = totalSets(map);
+        map['done'] = done;
+        map['completedSets'] = done ? plannedSetCount : 0;
+      }
       return map;
     }).toList();
 
@@ -163,7 +254,7 @@ class UserRoutinesPage extends StatelessWidget {
           children: [
             AppCard(
               child: Text(
-                'Mostrando solo rutinas asignadas a: $userEmail',
+                'Mostrando solo rutinas activas asignadas a: $userEmail',
                 style: const TextStyle(color: Colors.white70),
               ),
             ),
@@ -175,13 +266,27 @@ class UserRoutinesPage extends StatelessWidget {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final routines = snapshot.data?.docs ?? [];
+                final routines = (snapshot.data?.docs ?? [])
+                    .where((doc) => isActiveRoutine(doc.data()))
+                    .toList();
+
+                routines.sort((a, b) {
+                  final aOrder = a.data()['dayOrder'] is int
+                      ? a.data()['dayOrder'] as int
+                      : routineDayOrder((a.data()['day'] ?? '').toString());
+                  final bOrder = b.data()['dayOrder'] is int
+                      ? b.data()['dayOrder'] as int
+                      : routineDayOrder((b.data()['day'] ?? '').toString());
+                  final orderCompare = aOrder.compareTo(bOrder);
+                  if (orderCompare != 0) return orderCompare;
+                  return (a.data()['title'] ?? '').toString().compareTo((b.data()['title'] ?? '').toString());
+                });
 
                 if (routines.isEmpty) {
                   return const AppCard(
                     child: Center(
                       child: Text(
-                        'Todavía no tienes rutinas asignadas. Comprueba que el entrenador haya creado el cliente con este mismo email.',
+                        'Todavía no tienes rutinas activas asignadas.',
                         textAlign: TextAlign.center,
                       ),
                     ),

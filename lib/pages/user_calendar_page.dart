@@ -19,6 +19,10 @@ class UserCalendarPage extends StatelessWidget {
 
   static const weekDays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
+  bool isActiveRoutine(Map<String, dynamic> data) {
+    return (data['status'] ?? 'active').toString() != 'archived';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -31,7 +35,9 @@ class UserCalendarPage extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final routines = snapshot.data?.docs ?? [];
+            final routines = (snapshot.data?.docs ?? [])
+                .where((doc) => isActiveRoutine(doc.data()))
+                .toList();
 
             return ListView(
               padding: const EdgeInsets.all(16),
@@ -51,7 +57,7 @@ class UserCalendarPage extends StatelessWidget {
                         Text(day, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                         const SizedBox(height: 10),
                         if (dayRoutines.isEmpty)
-                          const Text('Descanso o sin rutina asignada.', style: TextStyle(color: Colors.white70))
+                          const Text('Descanso o sin rutina activa asignada.', style: TextStyle(color: Colors.white70))
                         else
                           ...dayRoutines.map((doc) {
                             final data = doc.data();
