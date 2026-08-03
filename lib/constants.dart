@@ -1,1 +1,5 @@
-const String demoGymId = 'default_gym';
+const String defaultGymId = 'dalaigym';
+const String defaultGymName = 'DalaiGym';
+
+// Alias temporal para mantener compatibilidad con pantallas antiguas.
+const String demoGymId = defaultGymId;

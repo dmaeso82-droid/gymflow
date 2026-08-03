@@ -20,7 +20,6 @@ int exerciseTotalSets(Map<String, dynamic> exercise) {
 int exerciseCompletedSets(Map<String, dynamic> exercise) {
   final total = exerciseTotalSets(exercise);
   final rawCompleted = intValue(exercise['completedSets'], fallback: -1);
-
   if (rawCompleted >= 0) return rawCompleted.clamp(0, total).toInt();
   if (exercise['done'] == true) return total;
   return 0;
@@ -28,7 +27,6 @@ int exerciseCompletedSets(Map<String, dynamic> exercise) {
 
 int routineProgressBySets(List<dynamic> exercises) {
   if (exercises.isEmpty) return 0;
-
   var totalSets = 0;
   var completedSets = 0;
 
@@ -80,9 +78,15 @@ class RoutineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = routineProgressBySets(exercises);
+    final isCompact = MediaQuery.of(context).size.width < 600;
+    final titleSize = isCompact ? 18.0 : 22.0;
+    final cardBottomMargin = isCompact ? 10.0 : 16.0;
+    final notesPadding = isCompact ? 10.0 : 12.0;
+    final progressHeight = isCompact ? 5.0 : 8.0;
+    final exerciseTopSpacing = isCompact ? 10.0 : 16.0;
 
     return AppCard(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.only(bottom: cardBottomMargin),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -92,65 +96,99 @@ class RoutineCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  maxLines: isCompact ? 2 : null,
+                  overflow: isCompact ? TextOverflow.ellipsis : TextOverflow.visible,
+                  style: TextStyle(fontSize: titleSize, fontWeight: FontWeight.w900, height: 1.15),
                 ),
               ),
               if (archived) ...[
-                const SizedBox(width: 8),
+                SizedBox(width: isCompact ? 6 : 8),
                 Chip(
+                  visualDensity: isCompact ? VisualDensity.compact : VisualDensity.standard,
                   label: const Text('ARCHIVADA'),
                   backgroundColor: Colors.orangeAccent.withOpacity(0.16),
-                  labelStyle: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                  labelStyle: TextStyle(
+                    color: Colors.orangeAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: isCompact ? 11 : 13,
+                  ),
                   side: BorderSide.none,
                 ),
               ],
               if (trainerMode) ...[
                 IconButton(
+                  visualDensity: isCompact ? VisualDensity.compact : VisualDensity.standard,
+                  padding: isCompact ? EdgeInsets.zero : const EdgeInsets.all(8),
+                  constraints: isCompact ? const BoxConstraints(minWidth: 34, minHeight: 34) : null,
                   tooltip: 'Editar rutina',
                   onPressed: onEditRoutine,
-                  icon: const Icon(Icons.edit, color: Colors.greenAccent),
+                  icon: Icon(Icons.edit, color: Colors.greenAccent, size: isCompact ? 21 : 24),
                 ),
                 IconButton(
+                  visualDensity: isCompact ? VisualDensity.compact : VisualDensity.standard,
+                  padding: isCompact ? EdgeInsets.zero : const EdgeInsets.all(8),
+                  constraints: isCompact ? const BoxConstraints(minWidth: 34, minHeight: 34) : null,
                   tooltip: 'Eliminar rutina',
                   onPressed: onDeleteRoutine,
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  icon: Icon(Icons.delete_outline, color: Colors.redAccent, size: isCompact ? 21 : 24),
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: isCompact ? 4 : 6),
           Row(
             children: [
               const Icon(Icons.calendar_month, size: 16, color: Colors.white60),
               const SizedBox(width: 6),
-              Expanded(child: Text('$day · $clientName', style: const TextStyle(color: Colors.white60))),
-              Chip(
-                label: Text('$progress%'),
-                backgroundColor: Colors.greenAccent.withOpacity(0.15),
-                side: BorderSide.none,
+              Expanded(
+                child: Text(
+                  '$day · $clientName',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white60),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 10 : 12,
+                  vertical: isCompact ? 6 : 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$progress%',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: isCompact ? 12 : 14),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: isCompact ? 8 : 10),
           if (notes.isNotEmpty)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(notesPadding),
               decoration: BoxDecoration(
                 color: const Color(0xFF020617),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(isCompact ? 12 : 14),
               ),
-              child: Text(notes, style: const TextStyle(color: Colors.white70)),
+              child: Text(
+                notes,
+                maxLines: isCompact ? 2 : null,
+                overflow: isCompact ? TextOverflow.ellipsis : TextOverflow.visible,
+                style: TextStyle(color: Colors.white70, fontSize: isCompact ? 13 : 14, height: 1.35),
+              ),
             ),
-          const SizedBox(height: 12),
+          SizedBox(height: isCompact ? 8 : 12),
           LinearProgressIndicator(
             value: progress / 100,
-            minHeight: 8,
+            minHeight: progressHeight,
             borderRadius: BorderRadius.circular(999),
             backgroundColor: Colors.white12,
             color: Colors.greenAccent,
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: exerciseTopSpacing),
           if (exercises.isEmpty)
             const Text('Esta rutina todavía no tiene ejercicios.', style: TextStyle(color: Colors.white70))
           else
@@ -174,7 +212,7 @@ class RoutineCard extends StatelessWidget {
               );
             }),
           if (trainerMode) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: isCompact ? 8 : 12),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(

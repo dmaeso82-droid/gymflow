@@ -55,25 +55,43 @@ class _AuthPageState extends State<AuthPage> {
         final uid = credential.user!.uid;
         final db = FirebaseFirestore.instance;
 
+        await db.collection('gyms').doc(defaultGymId).set({
+          'name': defaultGymName,
+          'active': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
         await db.collection('users').doc(uid).set({
           'name': name,
           'email': email,
           'role': 'trainer',
-          'gymId': demoGymId,
+          'trainerRole': 'gym_admin',
+          'gymId': defaultGymId,
+          'active': true,
           'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        await db.collection('gyms').doc(demoGymId).set({
-          'name': 'GymFlow Demo',
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-
-        await db.collection('gyms').doc(demoGymId).collection('members').doc(uid).set({
+        await db.collection('gyms').doc(defaultGymId).collection('members').doc(uid).set({
           'name': name,
           'email': email,
           'role': 'trainer',
+          'trainerRole': 'gym_admin',
+          'active': true,
           'createdAt': FieldValue.serverTimestamp(),
-        });
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        await db.collection('gyms').doc(defaultGymId).collection('trainers').doc(uid).set({
+          'name': name,
+          'email': email,
+          'role': 'trainer',
+          'trainerRole': 'gym_admin',
+          'active': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       } else {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
@@ -152,16 +170,16 @@ class _AuthPageState extends State<AuthPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      registerMode ? 'Crear cuenta de entrenador' : 'Iniciar sesión',
+                      registerMode ? 'Crear cuenta admin de $defaultGymName' : 'Iniciar sesión',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 24),
                     if (registerMode) ...[
-                      AppTextField(controller: nameController, label: 'Nombre del entrenador'),
+                      AppTextField(controller: nameController, label: 'Nombre del administrador'),
                       const SizedBox(height: 12),
                       const Text(
-                        'Los usuarios/clientes se crean desde la cuenta del entrenador.',
+                        'Esta cuenta será admin del gimnasio. Los entrenadores se crean después desde el panel de Entrenadores.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white60, fontSize: 12),
                       ),
@@ -188,11 +206,11 @@ class _AuthPageState extends State<AuthPage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.login),
-                      label: Text(registerMode ? 'Crear cuenta de entrenador' : 'Entrar'),
+                      label: Text(registerMode ? 'Crear admin de $defaultGymName' : 'Entrar'),
                     ),
                     TextButton(
                       onPressed: loading ? null : () => setState(() => registerMode = !registerMode),
-                      child: Text(registerMode ? 'Ya tengo cuenta' : 'Registrarme como entrenador'),
+                      child: Text(registerMode ? 'Ya tengo cuenta' : 'Registrarme como admin de gimnasio'),
                     ),
                     if (!registerMode)
                       TextButton(

@@ -1,5 +1,6 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/app_card.dart';
@@ -24,6 +25,11 @@ class ClientGoalsPanel extends StatelessWidget {
       .doc(gymId)
       .collection('goals');
 
+  CollectionReference<Map<String, dynamic>> get activityRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(gymId)
+      .collection('activity');
+
   int timestampSortValue(dynamic value) {
     if (value is Timestamp) return value.millisecondsSinceEpoch;
     return 0;
@@ -40,6 +46,54 @@ class ClientGoalsPanel extends StatelessWidget {
 
     return 'Fecha pendiente';
   }
+
+
+  Future<Map<String, String>> currentActor() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return {'uid': '', 'name': 'Sistema', 'email': ''};
+    var name = user.displayName ?? '';
+    final email = (user.email ?? '').toLowerCase();
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final storedName = userDoc.data()?['name']?.toString() ?? '';
+      if (storedName.trim().isNotEmpty) name = storedName.trim();
+    } catch (_) {}
+    if (name.trim().isEmpty) name = email.isEmpty ? 'Entrenador' : email;
+    return {'uid': user.uid, 'name': name, 'email': email};
+  }
+
+  Map<String, dynamic> auditCreateFields(Map<String, String> actor) => {
+        'createdBy': actor['name'] ?? '',
+        'createdByUid': actor['uid'] ?? '',
+        'updatedBy': actor['name'] ?? '',
+        'updatedByUid': actor['uid'] ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+  Map<String, dynamic> auditUpdateFields(Map<String, String> actor) => {
+        'updatedBy': actor['name'] ?? '',
+        'updatedByUid': actor['uid'] ?? '',
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+  Map<String, dynamic> activityFields({
+    required String type,
+    required String target,
+    required Map<String, String> actor,
+    String? targetId,
+    Map<String, dynamic>? metadata,
+  }) => {
+        'type': type,
+        'target': target,
+        'targetId': targetId ?? '',
+        'targetEmail': clientEmail.toLowerCase(),
+        'user': actor['name'] ?? '',
+        'userUid': actor['uid'] ?? '',
+        'userEmail': actor['email'] ?? '',
+        'metadata': metadata ?? {},
+        'createdAt': FieldValue.serverTimestamp(),
+      };
 
   Future<void> showGoalDialog(
     BuildContext context, {
@@ -139,9 +193,12 @@ class ClientGoalsPanel extends StatelessWidget {
     notesController.dispose();
 
     if (result == null) return;
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
 
     if (goalDoc == null) {
-      await goalsRef.add({
+      final goalRef = goalsRef.doc();
+      batch.set(goalRef, {
         'clientName': clientName,
         'clientEmail': clientEmail.toLowerCase(),
         'title': result['title'],
@@ -149,19 +206,43 @@ class ClientGoalsPanel extends StatelessWidget {
         'targetValue': result['targetValue'],
         'notes': result['notes'],
         'completed': false,
-        'createdAt': FieldValue.serverTimestamp(),
+        ...auditCreateFields(actor),
       });
+      batch.set(activityRef.doc(), activityFields(
+        type: 'goal_created',
+        target: result['title']?.toString() ?? 'Objetivo',
+        targetId: goalRef.id,
+        actor: actor,
+        metadata: {
+          'clientName': clientName,
+          'type': result['type'],
+          'targetValue': result['targetValue'],
+        },
+      ));
     } else {
-      await goalsRef.doc(goalDoc.id).update({
+      batch.update(goalsRef.doc(goalDoc.id), {
         'clientName': clientName,
         'clientEmail': clientEmail.toLowerCase(),
         'title': result['title'],
         'type': result['type'],
         'targetValue': result['targetValue'],
         'notes': result['notes'],
-        'updatedAt': FieldValue.serverTimestamp(),
+        ...auditUpdateFields(actor),
       });
+      batch.set(activityRef.doc(), activityFields(
+        type: 'goal_updated',
+        target: result['title']?.toString() ?? 'Objetivo',
+        targetId: goalDoc.id,
+        actor: actor,
+        metadata: {
+          'clientName': clientName,
+          'previousTitle': goalDoc.data()['title'] ?? '',
+          'type': result['type'],
+          'targetValue': result['targetValue'],
+        },
+      ));
     }
+    await batch.commit();
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -174,11 +255,22 @@ class ClientGoalsPanel extends StatelessWidget {
     QueryDocumentSnapshot<Map<String, dynamic>> goalDoc,
     bool completed,
   ) async {
-    await goalsRef.doc(goalDoc.id).update({
+    final data = goalDoc.data();
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(goalsRef.doc(goalDoc.id), {
       'completed': completed,
       'completedAt': completed ? FieldValue.serverTimestamp() : null,
-      'updatedAt': FieldValue.serverTimestamp(),
+      ...auditUpdateFields(actor),
     });
+    batch.set(activityRef.doc(), activityFields(
+      type: completed ? 'goal_completed' : 'goal_reopened',
+      target: data['title']?.toString() ?? 'Objetivo',
+      targetId: goalDoc.id,
+      actor: actor,
+      metadata: {'clientName': clientName, 'completed': completed},
+    ));
+    await batch.commit();
   }
 
   Future<void> deleteGoal(
@@ -213,7 +305,17 @@ class ClientGoalsPanel extends StatelessWidget {
 
     if (confirm != true) return;
 
-    await goalsRef.doc(goalDoc.id).delete();
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.delete(goalsRef.doc(goalDoc.id));
+    batch.set(activityRef.doc(), activityFields(
+      type: 'goal_deleted',
+      target: title,
+      targetId: goalDoc.id,
+      actor: actor,
+      metadata: {'clientName': clientName},
+    ));
+    await batch.commit();
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -355,6 +457,10 @@ class ClientGoalsPanel extends StatelessWidget {
                                 InfoChip(text: typeLabel(type)),
                                 if (targetValue.isNotEmpty) InfoChip(text: 'Meta: $targetValue'),
                                 InfoChip(text: createdAt),
+                                if ((data['createdBy'] ?? '').toString().isNotEmpty)
+                                  InfoChip(text: 'Creado por ${data['createdBy']}'),
+                                if ((data['updatedBy'] ?? '').toString().isNotEmpty)
+                                  InfoChip(text: 'Actualizado por ${data['updatedBy']}'),
                               ],
                             ),
                             if (notes.isNotEmpty) ...[

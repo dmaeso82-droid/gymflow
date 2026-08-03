@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../data/routine_templates.dart';
@@ -41,6 +42,12 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       .doc(widget.gymId)
       .collection('routine_templates');
 
+
+  CollectionReference<Map<String, dynamic>> get activityRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('activity');
+
   @override
   void dispose() {
     routineTitleController.dispose();
@@ -49,6 +56,68 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
 
   void showSnack(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<Map<String, String>> currentActor() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return {'uid': '', 'name': 'Sistema', 'email': ''};
+    }
+
+    var name = user.displayName ?? '';
+    final email = (user.email ?? '').toLowerCase();
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = userDoc.data();
+      final storedName = data?['name']?.toString() ?? '';
+      if (storedName.trim().isNotEmpty) name = storedName.trim();
+    } catch (_) {
+      // Si no se puede leer el perfil, usamos el email para no bloquear la operación.
+    }
+
+    if (name.trim().isEmpty) name = email.isEmpty ? 'Entrenador' : email;
+    return {'uid': user.uid, 'name': name, 'email': email};
+  }
+
+  Map<String, dynamic> auditCreateFields(Map<String, String> actor) {
+    return {
+      'createdBy': actor['name'] ?? '',
+      'createdByUid': actor['uid'] ?? '',
+      'updatedBy': actor['name'] ?? '',
+      'updatedByUid': actor['uid'] ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Map<String, dynamic> auditUpdateFields(Map<String, String> actor) {
+    return {
+      'updatedBy': actor['name'] ?? '',
+      'updatedByUid': actor['uid'] ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Map<String, dynamic> activityFields({
+    required String type,
+    required String target,
+    required Map<String, String> actor,
+    String? targetId,
+    String? targetEmail,
+    Map<String, dynamic>? metadata,
+  }) {
+    return {
+      'type': type,
+      'target': target,
+      'targetId': targetId ?? '',
+      'targetEmail': (targetEmail ?? '').toLowerCase(),
+      'user': actor['name'] ?? '',
+      'userUid': actor['uid'] ?? '',
+      'userEmail': actor['email'] ?? '',
+      'metadata': metadata ?? {},
+      'createdAt': FieldValue.serverTimestamp(),
+    };
   }
 
 
@@ -98,8 +167,11 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
     }
 
     final selectedClient = selectedClientDoc.data();
+    final actor = await currentActor();
+    final routineRef = routinesRef.doc();
+    final batch = FirebaseFirestore.instance.batch();
 
-    await routinesRef.add({
+    batch.set(routineRef, {
       'title': title,
       'clientId': selectedClientDoc.id,
       'clientName': selectedClient['name'] ?? 'Sin cliente',
@@ -108,19 +180,28 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       'dayOrder': routineDayOrder(selectedRoutineDay),
       'notes': 'Añade observaciones para el usuario.',
       'exercises': [],
-      'createdAt': FieldValue.serverTimestamp(),
       'status': 'active',
+      ...auditCreateFields(actor),
     });
 
+    batch.set(activityRef.doc(), activityFields(
+      type: 'routine_created',
+      target: title,
+      targetId: routineRef.id,
+      targetEmail: (selectedClient['email'] ?? '').toString(),
+      actor: actor,
+      metadata: {'clientName': selectedClient['name'] ?? 'Sin cliente'},
+    ));
+
+    await batch.commit();
     routineTitleController.clear();
     showSnack('Rutina creada.');
   }
 
-
-
   Future<void> archiveActiveRoutinesForClient({
     required String clientId,
     required String clientEmail,
+    Map<String, String>? actor,
   }) async {
     final normalizedEmail = clientEmail.toLowerCase().trim();
     final existingRoutines = await routinesRef.get();
@@ -140,7 +221,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
         batch.update(routine.reference, {
           'status': 'archived',
           'archivedAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
+          ...(actor != null ? auditUpdateFields(actor) : {'updatedAt': FieldValue.serverTimestamp()}),
         });
       }
     }
@@ -321,9 +402,11 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
     }
 
     final selectedClient = selectedClientDoc.data();
+    final actor = await currentActor();
     await archiveActiveRoutinesForClient(
       clientId: selectedClientDoc.id,
       clientEmail: (selectedClient['email'] ?? '').toString(),
+      actor: actor,
     );
 
     final days = List<Map<String, dynamic>>.from(
@@ -362,7 +445,6 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
         'dayOrder': day['dayOrder'] ?? routineDayOrder((day['day'] ?? '').toString()),
         'notes': day['notes'] ?? 'Rutina generada automáticamente desde plantilla.',
         'exercises': exercises,
-        'createdAt': FieldValue.serverTimestamp(),
         'generated': true,
         'generatedTemplateName': template['name'] ?? templateDisplayName(template, result['source'].toString()),
         'generatedTemplateSource': result['source'],
@@ -370,8 +452,25 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
         'generatedFrequency': template['frequency'],
         'generatedLevel': template['level'],
         'status': 'active',
+        ...auditCreateFields(actor),
       });
     }
+
+    batch.set(activityRef.doc(), activityFields(
+      type: 'routine_generated',
+      target: template['name']?.toString() ?? 'Rutina automática',
+      targetId: selectedClientDoc.id,
+      targetEmail: (selectedClient['email'] ?? '').toString(),
+      actor: actor,
+      metadata: {
+        'clientName': selectedClient['name'] ?? 'Sin cliente',
+        'templateSource': result['source'],
+        'objective': template['objective'],
+        'frequency': template['frequency'],
+        'level': template['level'],
+        'days': days.length,
+      },
+    ));
 
     await batch.commit();
     showSnack('Rutina automática generada para ${selectedClient['name'] ?? 'el cliente'}.');
@@ -426,17 +525,29 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
     titleController.dispose();
     dayController.dispose();
     notesController.dispose();
-
     if (result == null) return;
 
-    await routinesRef.doc(routineId).update({
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(routinesRef.doc(routineId), {
       'title': result['title'],
       'day': result['day'],
       'dayOrder': routineDayOrder(result['day'] ?? 'Sin día'),
       'notes': result['notes'],
-      'updatedAt': FieldValue.serverTimestamp(),
+      ...auditUpdateFields(actor),
     });
-
+    batch.set(activityRef.doc(), activityFields(
+      type: 'routine_updated',
+      target: result['title'] ?? routineData['title']?.toString() ?? 'Rutina',
+      targetId: routineId,
+      targetEmail: routineData['clientEmail']?.toString(),
+      actor: actor,
+      metadata: {
+        'clientName': routineData['clientName'] ?? '',
+        'previousTitle': routineData['title'] ?? '',
+      },
+    ));
+    await batch.commit();
     showSnack('Rutina actualizada.');
   }
 
@@ -462,8 +573,16 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
     );
 
     if (confirm != true) return;
-
-    await routinesRef.doc(routineId).delete();
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.delete(routinesRef.doc(routineId));
+    batch.set(activityRef.doc(), activityFields(
+      type: 'routine_deleted',
+      target: routineTitle,
+      targetId: routineId,
+      actor: actor,
+    ));
+    await batch.commit();
     showSnack('Rutina eliminada.');
   }
 
@@ -471,6 +590,7 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
     final result = await showExerciseSheet(context, gymId: widget.gymId);
     if (result == null) return;
 
+    final actor = await currentActor();
     final newExercise = {
       'id': DateTime.now().microsecondsSinceEpoch.toString(),
       'name': result.name,
@@ -481,7 +601,26 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       'done': false,
     };
 
-    await routinesRef.doc(routineId).update({'exercises': [...currentExercises, newExercise]});
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final routineRef = routinesRef.doc(routineId);
+      final routineSnapshot = await transaction.get(routineRef);
+      final routineData = routineSnapshot.data() ?? {};
+      transaction.update(routineRef, {
+        'exercises': [...currentExercises, newExercise],
+        ...auditUpdateFields(actor),
+      });
+      transaction.set(activityRef.doc(), activityFields(
+        type: 'routine_exercise_added',
+        target: result.name,
+        targetId: routineId,
+        targetEmail: routineData['clientEmail']?.toString(),
+        actor: actor,
+        metadata: {
+          'routineTitle': routineData['title'] ?? '',
+          'clientName': routineData['clientName'] ?? '',
+        },
+      ));
+    });
   }
 
   Future<void> editExercise(String routineId, List<dynamic> exercises, String exerciseId) async {
@@ -518,9 +657,26 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       return map;
     }).toList();
 
-    await routinesRef.doc(routineId).update({
-      'exercises': updated,
-      'updatedAt': FieldValue.serverTimestamp(),
+    final actor = await currentActor();
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final routineRef = routinesRef.doc(routineId);
+      final routineSnapshot = await transaction.get(routineRef);
+      final routineData = routineSnapshot.data() ?? {};
+      transaction.update(routineRef, {
+        'exercises': updated,
+        ...auditUpdateFields(actor),
+      });
+      transaction.set(activityRef.doc(), activityFields(
+        type: 'routine_exercise_updated',
+        target: result.name,
+        targetId: routineId,
+        targetEmail: routineData['clientEmail']?.toString(),
+        actor: actor,
+        metadata: {
+          'routineTitle': routineData['title'] ?? '',
+          'clientName': routineData['clientName'] ?? '',
+        },
+      ));
     });
 
     showSnack('Ejercicio actualizado.');
@@ -533,20 +689,50 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       return map;
     }).toList();
 
-    await routinesRef.doc(routineId).update({'exercises': updated});
+    final actor = await currentActor();
+    await routinesRef.doc(routineId).update({
+      'exercises': updated,
+      ...auditUpdateFields(actor),
+    });
   }
 
   Future<void> deleteExercise(String routineId, List<dynamic> exercises, String exerciseId) async {
+    String deletedExerciseName = exerciseId;
     final updated = exercises.where((item) {
       final map = Map<String, dynamic>.from(item as Map);
+      if (map['id'] == exerciseId) deletedExerciseName = map['name']?.toString() ?? exerciseId;
       return map['id'] != exerciseId;
     }).toList();
 
-    await routinesRef.doc(routineId).update({'exercises': updated});
+    final actor = await currentActor();
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final routineRef = routinesRef.doc(routineId);
+      final routineSnapshot = await transaction.get(routineRef);
+      final routineData = routineSnapshot.data() ?? {};
+      transaction.update(routineRef, {
+        'exercises': updated,
+        ...auditUpdateFields(actor),
+      });
+      transaction.set(activityRef.doc(), activityFields(
+        type: 'routine_exercise_deleted',
+        target: deletedExerciseName,
+        targetId: routineId,
+        targetEmail: routineData['clientEmail']?.toString(),
+        actor: actor,
+        metadata: {
+          'routineTitle': routineData['title'] ?? '',
+          'clientName': routineData['clientName'] ?? '',
+        },
+      ));
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
+    final pagePadding = isCompact ? 12.0 : 16.0;
+    final sectionGap = isCompact ? 10.0 : 16.0;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Rutinas')),
       body: SafeArea(
@@ -554,102 +740,182 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
           stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
           builder: (context, clientSnapshot) {
             final clients = clientSnapshot.data?.docs ?? [];
-
             if (selectedClientId == null && clients.isNotEmpty) {
               selectedClientId = clients.first.id;
             }
-
             final clientNames = {for (final doc in clients) doc.id: doc.data()['name'] ?? 'Sin cliente'};
 
             return ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(pagePadding),
               children: [
                 AppCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle(icon: Icons.person_search, title: 'Cliente'),
-                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_search, color: Colors.greenAccent, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Cliente',
+                            style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: isCompact ? 8 : 12),
                       if (clients.isEmpty)
                         const Text('Primero crea un cliente.', style: TextStyle(color: Colors.white70))
                       else
                         DropdownButtonFormField<String>(
                           value: selectedClientId,
+                          isDense: isCompact,
                           dropdownColor: const Color(0xFF0F172A),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Cliente seleccionado',
-                            border: OutlineInputBorder(),
+                            border: const OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: isCompact ? 10 : 14,
+                            ),
                           ),
                           items: clients.map((doc) {
                             final data = doc.data();
                             final name = data['name'] ?? 'Sin nombre';
                             final email = data['email'] ?? 'Sin email';
-                            return DropdownMenuItem(value: doc.id, child: Text('$name · $email'));
+                            return DropdownMenuItem(
+                              value: doc.id,
+                              child: Text(
+                                isCompact ? name.toString() : '$name · $email',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
                           }).toList(),
                           onChanged: (value) => setState(() => selectedClientId = value),
                         ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: sectionGap),
                 AppCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle(icon: Icons.auto_awesome, title: 'Rutinas automáticas'),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'A partir de ahora las rutinas se crean desde plantillas. Configura tus plantillas y luego genera la rutina para el cliente seleccionado.',
-                        style: TextStyle(color: Colors.white70),
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_awesome, color: Colors.greenAccent, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Rutinas automáticas',
+                              style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: clients.isEmpty ? null : () => generateAutomaticRoutine(clients),
-                          icon: const Icon(Icons.auto_awesome),
-                          label: const Text('Generar rutina automática'),
+                      if (!isCompact) ...[
+                        const SizedBox(height: 12),
+                        const Text(
+                          'A partir de ahora las rutinas se crean desde plantillas. Configura tus plantillas y luego genera la rutina para el cliente seleccionado.',
+                          style: TextStyle(color: Colors.white70),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: openTemplateManager,
-                          icon: const Icon(Icons.tune),
-                          label: const Text('Gestionar plantillas automáticas'),
+                      ],
+                      SizedBox(height: isCompact ? 10 : 12),
+                      if (isCompact)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: clients.isEmpty ? null : () => generateAutomaticRoutine(clients),
+                                icon: const Icon(Icons.auto_awesome, size: 18),
+                                label: const Text('Generar'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: openTemplateManager,
+                                icon: const Icon(Icons.tune, size: 18),
+                                label: const Text('Plantillas'),
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: clients.isEmpty ? null : () => generateAutomaticRoutine(clients),
+                            icon: const Icon(Icons.auto_awesome),
+                            label: const Text('Generar rutina automática'),
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: openTemplateManager,
+                            icon: const Icon(Icons.tune),
+                            label: const Text('Gestionar plantillas automáticas'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  onChanged: (value) => setState(() => searchText = value),
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: 'Buscar rutina',
-                    filled: true,
-                    fillColor: const Color(0xFF0F172A),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
+                SizedBox(height: sectionGap),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        onChanged: (value) => setState(() => searchText = value),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          hintText: 'Buscar rutina',
+                          isDense: isCompact,
+                          filled: true,
+                          fillColor: const Color(0xFF0F172A),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: isCompact ? 10 : 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
                     ),
+                  ],
+                ),
+                SizedBox(height: isCompact ? 8 : 16),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompact ? 10 : 0,
+                    vertical: isCompact ? 6 : 0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isCompact ? const Color(0xFF0F172A) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: SwitchListTile(
+                    dense: isCompact,
+                    value: showArchivedRoutines,
+                    onChanged: (value) => setState(() => showArchivedRoutines = value),
+                    title: Text(
+                      'Mostrar archivadas',
+                      style: TextStyle(fontSize: isCompact ? 14 : 16, fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: isCompact
+                        ? null
+                        : const Text(
+                            'Por defecto solo se muestran rutinas activas.',
+                            style: TextStyle(color: Colors.white60),
+                          ),
+                    activeColor: Colors.greenAccent,
+                    contentPadding: EdgeInsets.zero,
                   ),
                 ),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  value: showArchivedRoutines,
-                  onChanged: (value) => setState(() => showArchivedRoutines = value),
-                  title: const Text('Mostrar rutinas archivadas'),
-                  subtitle: const Text(
-                    'Por defecto solo se muestran rutinas activas.',
-                    style: TextStyle(color: Colors.white60),
-                  ),
-                  activeColor: Colors.greenAccent,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 8),
+                SizedBox(height: isCompact ? 8 : 8),
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: routinesRef.orderBy('createdAt', descending: true).snapshots(),
                   builder: (context, routineSnapshot) {
@@ -659,23 +925,19 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                         child: Center(child: CircularProgressIndicator()),
                       );
                     }
-
                     if (selectedClientId == null) {
                       return const AppCard(child: Text('Selecciona un cliente para ver sus rutinas.'));
                     }
-
                     final routines = (routineSnapshot.data?.docs ?? []).where((doc) {
                       final data = doc.data();
                       if (data['clientId'] != selectedClientId) return false;
                       final status = (data['status'] ?? 'active').toString();
                       if (!showArchivedRoutines && status == 'archived') return false;
-
                       final clientName = (data['clientName'] ?? clientNames[data['clientId']] ?? '').toString();
                       final clientEmail = (data['clientEmail'] ?? '').toString();
                       final fullText = '${data['title'] ?? ''} $clientName $clientEmail'.toLowerCase();
                       return fullText.contains(searchText.toLowerCase());
                     }).toList();
-
                     routines.sort((a, b) {
                       final aOrder = a.data()['dayOrder'] is int
                           ? a.data()['dayOrder'] as int
@@ -687,17 +949,14 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
                       if (orderCompare != 0) return orderCompare;
                       return (a.data()['title'] ?? '').toString().compareTo((b.data()['title'] ?? '').toString());
                     });
-
                     if (routines.isEmpty) {
                       return const AppCard(child: Text('El cliente seleccionado no tiene rutinas que coincidan con la búsqueda.'));
                     }
-
                     return Column(
                       children: routines.map((doc) {
                         final data = doc.data();
                         final exercises = List<dynamic>.from(data['exercises'] ?? []);
                         final clientName = (data['clientName'] ?? clientNames[data['clientId']] ?? 'Sin cliente').toString();
-
                         return RoutineCard(
                           title: data['title'] ?? 'Sin título',
                           day: data['day'] ?? 'Sin día',
@@ -724,4 +983,5 @@ class _TrainerRoutinesPageState extends State<TrainerRoutinesPage> {
       ),
     );
   }
+
 }

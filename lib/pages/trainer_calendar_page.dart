@@ -32,6 +32,10 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
+    final pagePadding = isCompact ? 12.0 : 16.0;
+    final sectionGap = isCompact ? 10.0 : 16.0;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Calendario semanal')),
       body: SafeArea(
@@ -42,31 +46,56 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
             if (selectedClientId == null && clients.isNotEmpty) selectedClientId = clients.first.id;
 
             return ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(pagePadding),
               children: [
                 AppCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle(icon: Icons.person_search, title: 'Cliente'),
-                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_search, color: Colors.greenAccent, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Cliente',
+                            style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: isCompact ? 8 : 12),
                       if (clients.isEmpty)
                         const Text('Primero crea un cliente.', style: TextStyle(color: Colors.white70))
                       else
                         DropdownButtonFormField<String>(
                           value: selectedClientId,
+                          isDense: isCompact,
                           dropdownColor: const Color(0xFF0F172A),
-                          decoration: const InputDecoration(labelText: 'Cliente seleccionado', border: OutlineInputBorder()),
+                          decoration: InputDecoration(
+                            labelText: 'Cliente seleccionado',
+                            border: const OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: isCompact ? 10 : 14,
+                            ),
+                          ),
                           items: clients.map((doc) {
                             final data = doc.data();
-                            return DropdownMenuItem(value: doc.id, child: Text('${data['name'] ?? 'Sin nombre'} · ${data['email'] ?? 'Sin email'}'));
+                            final name = data['name'] ?? 'Sin nombre';
+                            final email = data['email'] ?? 'Sin email';
+                            return DropdownMenuItem(
+                              value: doc.id,
+                              child: Text(
+                                isCompact ? name.toString() : '$name · $email',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
                           }).toList(),
                           onChanged: (value) => setState(() => selectedClientId = value),
                         ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: sectionGap),
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: routinesRef.snapshots(),
                   builder: (context, routineSnapshot) {
@@ -77,28 +106,103 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                     return Column(
                       children: weekDays.map((day) {
                         final dayRoutines = routines.where((doc) => (doc.data()['day'] ?? '').toString() == day).toList();
+                        final totalExercises = dayRoutines.fold<int>(0, (sum, doc) {
+                          final exercises = List<dynamic>.from(doc.data()['exercises'] ?? []);
+                          return sum + exercises.length;
+                        });
+
                         return AppCard(
-                          margin: const EdgeInsets.only(bottom: 12),
+                          margin: EdgeInsets.only(bottom: isCompact ? 8 : 12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(day, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      day,
+                                      style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
+                                    ),
+                                  ),
+                                  if (dayRoutines.isNotEmpty)
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isCompact ? 8 : 10,
+                                        vertical: isCompact ? 4 : 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.greenAccent.withOpacity(0.14),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: Text(
+                                        '${dayRoutines.length} rutina${dayRoutines.length == 1 ? '' : 's'}',
+                                        style: TextStyle(fontSize: isCompact ? 11 : 12, fontWeight: FontWeight.w800),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              SizedBox(height: isCompact ? 6 : 10),
                               if (dayRoutines.isEmpty)
-                                const Text('Sin rutina asignada.', style: TextStyle(color: Colors.white70))
+                                Text(
+                                  'Sin rutina asignada.',
+                                  style: TextStyle(color: Colors.white70, fontSize: isCompact ? 13 : 14),
+                                )
                               else
                                 ...dayRoutines.map((doc) {
                                   final data = doc.data();
                                   final exercises = List<dynamic>.from(data['exercises'] ?? []);
-                                  return Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      InfoChip(text: data['title']?.toString() ?? 'Rutina'),
-                                      InfoChip(text: '${exercises.length} ejercicios'),
-                                    ],
+                                  final title = data['title']?.toString() ?? 'Rutina';
+
+                                  if (isCompact) {
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 6),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF020617),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: Colors.white10),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.fitness_center, size: 17, color: Colors.greenAccent),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontWeight: FontWeight.w800),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${exercises.length} ej.',
+                                            style: const TextStyle(color: Colors.white60, fontSize: 12),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        InfoChip(text: title),
+                                        InfoChip(text: '${exercises.length} ejercicios'),
+                                      ],
+                                    ),
                                   );
                                 }),
+                              if (isCompact && totalExercises > 0) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '$totalExercises ejercicios en total',
+                                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                ),
+                              ],
                             ],
                           ),
                         );

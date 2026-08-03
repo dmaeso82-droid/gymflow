@@ -1,5 +1,6 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../data/routine_templates.dart';
@@ -25,8 +26,75 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
       .doc(widget.gymId)
       .collection('routine_templates');
 
+
+  CollectionReference<Map<String, dynamic>> get activityRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('activity');
+
   void showSnack(BuildContext context, String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+
+  Future<Map<String, String>> currentActor() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return {'uid': '', 'name': 'Sistema', 'email': ''};
+    }
+
+    var name = user.displayName ?? '';
+    final email = (user.email ?? '').toLowerCase();
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = userDoc.data();
+      final storedName = data?['name']?.toString() ?? '';
+      if (storedName.trim().isNotEmpty) name = storedName.trim();
+    } catch (_) {
+      // Si no se puede leer el perfil, usamos el email para no bloquear la operación.
+    }
+
+    if (name.trim().isEmpty) name = email.isEmpty ? 'Entrenador' : email;
+    return {'uid': user.uid, 'name': name, 'email': email};
+  }
+
+  Map<String, dynamic> auditCreateFields(Map<String, String> actor) {
+    return {
+      'createdBy': actor['name'] ?? '',
+      'createdByUid': actor['uid'] ?? '',
+      'updatedBy': actor['name'] ?? '',
+      'updatedByUid': actor['uid'] ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Map<String, dynamic> auditUpdateFields(Map<String, String> actor) {
+    return {
+      'updatedBy': actor['name'] ?? '',
+      'updatedByUid': actor['uid'] ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Map<String, dynamic> activityFields({
+    required String type,
+    required String target,
+    required Map<String, String> actor,
+    String? targetId,
+    Map<String, dynamic>? metadata,
+  }) {
+    return {
+      'type': type,
+      'target': target,
+      'targetId': targetId ?? '',
+      'user': actor['name'] ?? '',
+      'userUid': actor['uid'] ?? '',
+      'userEmail': actor['email'] ?? '',
+      'metadata': metadata ?? {},
+      'createdAt': FieldValue.serverTimestamp(),
+    };
   }
 
   int localDayOrder(String day) => dayOrder(day);
@@ -170,16 +238,30 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
       return;
     }
 
+    final actor = await currentActor();
     final normalized = normalizeTemplate({
       ...template,
       'name': result['name'],
-      'createdBy': 'trainer',
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
+      ...auditCreateFields(actor),
     });
 
-    final doc = await templatesRef.add(normalized);
-    if (mounted) setState(() => selectedTemplateId = doc.id);
+    final docRef = templatesRef.doc();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.set(docRef, normalized);
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_created',
+      target: result['name'].toString(),
+      targetId: docRef.id,
+      actor: actor,
+      metadata: {
+        'objective': result['objective'],
+        'frequency': result['frequency'],
+        'level': result['level'],
+      },
+    ));
+    await batch.commit();
+
+    if (mounted) setState(() => selectedTemplateId = docRef.id);
     if (context.mounted) showSnack(context, 'Plantilla creada.');
   }
 
@@ -209,7 +291,21 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
     );
     nameController.dispose();
     if (result == null) return;
-    await templatesRef.doc(templateId).update({'name': result, 'updatedAt': FieldValue.serverTimestamp()});
+
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(templatesRef.doc(templateId), {
+      'name': result,
+      ...auditUpdateFields(actor),
+    });
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_renamed',
+      target: result,
+      targetId: templateId,
+      actor: actor,
+      metadata: {'previousName': data['name'] ?? ''},
+    ));
+    await batch.commit();
   }
 
   Future<void> deleteTemplate(BuildContext context, String templateId, String name) async {
@@ -233,19 +329,42 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
       },
     );
     if (confirm != true) return;
-    await templatesRef.doc(templateId).delete();
+
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.delete(templatesRef.doc(templateId));
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_deleted',
+      target: name,
+      targetId: templateId,
+      actor: actor,
+    ));
+    await batch.commit();
+
     if (mounted && selectedTemplateId == templateId) setState(() => selectedTemplateId = null);
     if (context.mounted) showSnack(context, 'Plantilla eliminada.');
   }
 
   Future<void> duplicateTemplate(BuildContext context, Map<String, dynamic> data) async {
+    final actor = await currentActor();
     final copy = Map<String, dynamic>.from(data);
     copy.remove('id');
     copy['name'] = '${copy['name'] ?? 'Plantilla'} (copia)';
-    copy['createdAt'] = FieldValue.serverTimestamp();
-    copy['updatedAt'] = FieldValue.serverTimestamp();
-    final doc = await templatesRef.add(copy);
-    if (mounted) setState(() => selectedTemplateId = doc.id);
+    copy.addAll(auditCreateFields(actor));
+
+    final docRef = templatesRef.doc();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.set(docRef, copy);
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_duplicated',
+      target: copy['name']?.toString() ?? 'Plantilla duplicada',
+      targetId: docRef.id,
+      actor: actor,
+      metadata: {'sourceName': data['name'] ?? ''},
+    ));
+    await batch.commit();
+
+    if (mounted) setState(() => selectedTemplateId = docRef.id);
     if (context.mounted) showSnack(context, 'Plantilla duplicada.');
   }
 
@@ -292,7 +411,23 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
 
     days[dayIndex]['title'] = result['title']!.isEmpty ? days[dayIndex]['title'] : result['title'];
     days[dayIndex]['notes'] = result['notes'];
-    await templatesRef.doc(templateId).update({'days': days, 'updatedAt': FieldValue.serverTimestamp()});
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(templatesRef.doc(templateId), {
+      'days': days,
+      ...auditUpdateFields(actor),
+    });
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_day_updated',
+      target: data['name']?.toString() ?? 'Plantilla',
+      targetId: templateId,
+      actor: actor,
+      metadata: {
+        'day': day['day'] ?? '',
+        'title': days[dayIndex]['title'] ?? '',
+      },
+    ));
+    await batch.commit();
   }
 
   Future<void> addExerciseToDay(BuildContext context, String templateId, Map<String, dynamic> data, int dayIndex) async {
@@ -312,7 +447,23 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
       'rest': result.rest,
     });
     days[dayIndex]['exercises'] = exercises;
-    await templatesRef.doc(templateId).update({'days': days, 'updatedAt': FieldValue.serverTimestamp()});
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(templatesRef.doc(templateId), {
+      'days': days,
+      ...auditUpdateFields(actor),
+    });
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_exercise_added',
+      target: result.name,
+      targetId: templateId,
+      actor: actor,
+      metadata: {
+        'templateName': data['name'] ?? '',
+        'day': days[dayIndex]['day'] ?? '',
+      },
+    ));
+    await batch.commit();
   }
 
   Future<void> editExerciseInDay(
@@ -347,7 +498,23 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
     }).toList();
 
     days[dayIndex]['exercises'] = updated;
-    await templatesRef.doc(templateId).update({'days': days, 'updatedAt': FieldValue.serverTimestamp()});
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(templatesRef.doc(templateId), {
+      'days': days,
+      ...auditUpdateFields(actor),
+    });
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_exercise_updated',
+      target: result.name,
+      targetId: templateId,
+      actor: actor,
+      metadata: {
+        'templateName': data['name'] ?? '',
+        'day': days[dayIndex]['day'] ?? '',
+      },
+    ));
+    await batch.commit();
   }
 
   Future<void> deleteExerciseFromDay(String templateId, Map<String, dynamic> data, int dayIndex, String exerciseId) async {
@@ -355,8 +522,29 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
     final exercises = List<Map<String, dynamic>>.from(
       (days[dayIndex]['exercises'] as List? ?? []).map((exercise) => Map<String, dynamic>.from(exercise as Map)),
     );
-    days[dayIndex]['exercises'] = exercises.where((exercise) => exercise['id'] != exerciseId).toList();
-    await templatesRef.doc(templateId).update({'days': days, 'updatedAt': FieldValue.serverTimestamp()});
+    var deletedExerciseName = exerciseId;
+    days[dayIndex]['exercises'] = exercises.where((exercise) {
+      if (exercise['id'] == exerciseId) deletedExerciseName = exercise['name']?.toString() ?? exerciseId;
+      return exercise['id'] != exerciseId;
+    }).toList();
+
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(templatesRef.doc(templateId), {
+      'days': days,
+      ...auditUpdateFields(actor),
+    });
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_exercise_deleted',
+      target: deletedExerciseName,
+      targetId: templateId,
+      actor: actor,
+      metadata: {
+        'templateName': data['name'] ?? '',
+        'day': days[dayIndex]['day'] ?? '',
+      },
+    ));
+    await batch.commit();
   }
 
   Future<void> moveExerciseInDay(
@@ -375,7 +563,25 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
     final item = exercises.removeAt(exerciseIndex);
     exercises.insert(newIndex, item);
     days[dayIndex]['exercises'] = exercises;
-    await templatesRef.doc(templateId).update({'days': days, 'updatedAt': FieldValue.serverTimestamp()});
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(templatesRef.doc(templateId), {
+      'days': days,
+      ...auditUpdateFields(actor),
+    });
+    batch.set(activityRef.doc(), activityFields(
+      type: 'template_exercise_moved',
+      target: item['name']?.toString() ?? 'Ejercicio',
+      targetId: templateId,
+      actor: actor,
+      metadata: {
+        'templateName': data['name'] ?? '',
+        'day': days[dayIndex]['day'] ?? '',
+        'from': exerciseIndex,
+        'to': newIndex,
+      },
+    ));
+    await batch.commit();
   }
 
   Widget buildSelectedTemplateEditor(
@@ -410,6 +616,14 @@ class _TrainerTemplateBuilderPageState extends State<TrainerTemplateBuilderPage>
                     Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
                     Text('$objective · $frequency días · $level', style: const TextStyle(color: Colors.white70)),
+                    if ((data['createdBy'] ?? '').toString().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text('Creada por ${data['createdBy']}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                    ],
+                    if ((data['updatedBy'] ?? '').toString().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text('Actualizada por ${data['updatedBy']}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                    ],
                   ],
                 ),
               ),

@@ -26,12 +26,49 @@ class RoleGatePage extends StatelessWidget {
         if (data == null) return const AuthPage();
 
         final role = data['role'] as String? ?? 'user';
-        final gymId = data['gymId'] as String? ?? demoGymId;
+        final trainerRole = data['trainerRole'] as String? ?? 'trainer';
+        final active = data['active'] != false;
+        final gymId = data['gymId'] as String? ?? defaultGymId;
         final name = data['name'] as String? ?? 'Usuario';
         final email = (data['email'] as String? ?? currentUser.email ?? '').toLowerCase();
 
+        if (!active) {
+          return Scaffold(
+            body: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.block, size: 48, color: Colors.redAccent),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Cuenta desactivada',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Contacta con el administrador del gimnasio para volver a activar el acceso.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton.icon(
+                        onPressed: () => FirebaseAuth.instance.signOut(),
+                        icon: const Icon(Icons.logout),
+                        label: const Text('Cerrar sesión'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
         if (role == 'trainer') {
-          return TrainerHomePage(gymId: gymId, trainerName: name);
+          return TrainerHomePage(gymId: gymId, trainerName: name, trainerRole: trainerRole);
         }
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -44,7 +81,6 @@ class RoleGatePage extends StatelessWidget {
               .snapshots(),
           builder: (context, clientSnapshot) {
             var displayName = name;
-
             if (clientSnapshot.hasData && clientSnapshot.data!.docs.isNotEmpty) {
               final clientData = clientSnapshot.data!.docs.first.data();
               displayName = clientData['name']?.toString() ?? name;

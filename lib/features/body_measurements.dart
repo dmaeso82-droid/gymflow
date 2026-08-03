@@ -1,5 +1,6 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
@@ -43,6 +44,11 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
       .collection('gyms')
       .doc(widget.gymId)
       .collection('body_measurements');
+
+  CollectionReference<Map<String, dynamic>> get activityRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('activity');
 
   static const metricLabels = <String, String>{
     'bodyWeight': 'Peso corporal',
@@ -95,6 +101,17 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
       return '$day/$month/$year $hour:$minute';
     }
     return 'Fecha pendiente';
+  }
+
+
+  Future<Map<String,String>> currentActor() async {
+    final user=FirebaseAuth.instance.currentUser;
+    if(user==null) return {'uid':'','name':'Sistema','email':''};
+    return {
+      'uid':user.uid,
+      'name':(user.displayName?.isNotEmpty==true?user.displayName!:user.email??'Entrenador'),
+      'email':user.email??'',
+    };
   }
 
   String formatShortDate(dynamic value) {
@@ -200,7 +217,10 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
 
     if (result == null) return;
 
-    await measurementsRef.add({
+    final actor = await currentActor();
+    final docRef = measurementsRef.doc();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.set(docRef, {
       'userId': widget.userId ?? '',
       'userName': widget.userName ?? '',
       'userEmail': (widget.userEmail ?? '').toLowerCase(),
@@ -209,8 +229,17 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
       'chest': result['chest'],
       'arm': result['arm'],
       'leg': result['leg'],
+      'recordedBy': actor['name'],
+      'recordedByUid': actor['uid'],
       'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
+    batch.set(activityRef.doc(), {
+      'type':'measurement_created','target':widget.userName ?? '',
+      'targetId':docRef.id,'user':actor['name'],'userUid':actor['uid'],
+      'createdAt':FieldValue.serverTimestamp()
+    });
+    await batch.commit();
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -247,7 +276,15 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
     );
 
     if (confirm != true) return;
-    await measurementsRef.doc(doc.id).delete();
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.delete(measurementsRef.doc(doc.id));
+    batch.set(activityRef.doc(), {
+      'type':'measurement_deleted','target':widget.userName ?? '',
+      'targetId':doc.id,'user':actor['name'],'userUid':actor['uid'],
+      'createdAt':FieldValue.serverTimestamp()
+    });
+    await batch.commit();
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -493,6 +530,8 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
                           if (chest > 0) InfoChip(text: 'Pecho ${formatNumber(chest)} cm'),
                           if (arm > 0) InfoChip(text: 'Brazo ${formatNumber(arm)} cm'),
                           if (leg > 0) InfoChip(text: 'Pierna ${formatNumber(leg)} cm'),
+                          if ((data['recordedBy'] ?? '').toString().isNotEmpty)
+                            InfoChip(text: 'Por ${data['recordedBy']}'),
                         ],
                       ),
                     ),

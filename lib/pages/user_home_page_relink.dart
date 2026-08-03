@@ -16,7 +16,6 @@ import 'user_weekly_summary_page.dart';
 import 'settings_page.dart';
 import 'community_page.dart';
 import 'challenges_page.dart';
-import 'rankings_page.dart';
 
 class UserHomePage extends StatelessWidget {
   final String gymId;
@@ -67,20 +66,6 @@ class UserHomePage extends StatelessWidget {
             userId: userId,
             userName: userName,
             userEmail: userEmail,
-          ),
-        ),
-      ),
-      QuickAction(
-        icon: Icons.leaderboard,
-        title: 'Rankings',
-        subtitle: 'DalaiGym',
-        onTap: () => openPage(
-          context,
-          RankingsPage(
-            gymId: gymId,
-            currentUserId: userId,
-            currentUserName: userName,
-            currentUserEmail: userEmail,
           ),
         ),
       ),

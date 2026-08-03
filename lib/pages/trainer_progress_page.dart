@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -24,6 +25,9 @@ class _TrainerProgressPageState extends State<TrainerProgressPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
+    final pagePadding = isCompact ? 12.0 : 16.0;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Progreso')),
       body: SafeArea(
@@ -39,31 +43,56 @@ class _TrainerProgressPageState extends State<TrainerProgressPage> {
             }
 
             return ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(pagePadding),
               children: [
                 AppCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle(icon: Icons.person_search, title: 'Cliente'),
-                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_search, color: Colors.greenAccent, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Cliente',
+                            style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: isCompact ? 8 : 12),
                       if (clients.isEmpty)
                         const Text('Primero crea un cliente.', style: TextStyle(color: Colors.white70))
                       else
                         DropdownButtonFormField<String>(
                           value: selectedClientId,
+                          isDense: isCompact,
                           dropdownColor: const Color(0xFF0F172A),
-                          decoration: const InputDecoration(labelText: 'Cliente seleccionado', border: OutlineInputBorder()),
+                          decoration: InputDecoration(
+                            labelText: 'Cliente seleccionado',
+                            border: const OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: isCompact ? 10 : 14,
+                            ),
+                          ),
                           items: clients.map((doc) {
                             final data = doc.data();
-                            return DropdownMenuItem(value: doc.id, child: Text('${data['name'] ?? 'Sin nombre'} · ${data['email'] ?? 'Sin email'}'));
+                            final name = data['name'] ?? 'Sin nombre';
+                            final email = data['email'] ?? 'Sin email';
+                            return DropdownMenuItem(
+                              value: doc.id,
+                              child: Text(
+                                isCompact ? name.toString() : '$name · $email',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
                           }).toList(),
                           onChanged: (value) => setState(() => selectedClientId = value),
                         ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: isCompact ? 10 : 16),
                 if (selected != null)
                   ClientProgress(
                     gymId: widget.gymId,

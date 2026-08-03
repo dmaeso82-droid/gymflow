@@ -36,6 +36,11 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       .doc(widget.gymId)
       .collection('routines');
 
+  CollectionReference<Map<String, dynamic>> get activityRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('activity');
+
   @override
   void dispose() {
     clientNameController.dispose();
@@ -46,6 +51,68 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
 
   void showSnack(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<Map<String, String>> currentActor() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return {'uid': '', 'name': 'Sistema', 'email': ''};
+    }
+
+    var name = user.displayName ?? '';
+    final email = (user.email ?? '').toLowerCase();
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = userDoc.data();
+      final storedName = data?['name']?.toString() ?? '';
+      if (storedName.trim().isNotEmpty) name = storedName.trim();
+    } catch (_) {
+      // Si no se puede leer el perfil, usamos el email para no bloquear la operación.
+    }
+
+    if (name.trim().isEmpty) name = email.isEmpty ? 'Entrenador' : email;
+    return {'uid': user.uid, 'name': name, 'email': email};
+  }
+
+  Map<String, dynamic> auditCreateFields(Map<String, String> actor) {
+    return {
+      'createdBy': actor['name'] ?? '',
+      'createdByUid': actor['uid'] ?? '',
+      'updatedBy': actor['name'] ?? '',
+      'updatedByUid': actor['uid'] ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Map<String, dynamic> auditUpdateFields(Map<String, String> actor) {
+    return {
+      'updatedBy': actor['name'] ?? '',
+      'updatedByUid': actor['uid'] ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Map<String, dynamic> activityFields({
+    required String type,
+    required String target,
+    required Map<String, String> actor,
+    String? targetId,
+    String? targetEmail,
+    Map<String, dynamic>? metadata,
+  }) {
+    return {
+      'type': type,
+      'target': target,
+      'targetId': targetId ?? '',
+      'targetEmail': (targetEmail ?? '').toLowerCase(),
+      'user': actor['name'] ?? '',
+      'userUid': actor['uid'] ?? '',
+      'userEmail': actor['email'] ?? '',
+      'metadata': metadata ?? {},
+      'createdAt': FieldValue.serverTimestamp(),
+    };
   }
 
   String temporaryPassword() {
@@ -122,6 +189,7 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
     }
 
     final uid = createdCredential?.user?.uid;
+    final actor = await currentActor();
     final db = FirebaseFirestore.instance;
     final batch = db.batch();
     final clientDoc = clientsRef.doc();
@@ -133,7 +201,7 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       'level': 'Nuevo',
       'authUid': uid ?? '',
       'accountStatus': uid == null ? 'existing_auth_user' : 'invited',
-      'createdAt': FieldValue.serverTimestamp(),
+      ...auditCreateFields(actor),
     });
 
     if (uid != null) {
@@ -142,17 +210,34 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
         'email': email,
         'role': 'user',
         'gymId': widget.gymId,
-        'createdAt': FieldValue.serverTimestamp(),
+        'active': true,
         'createdByTrainer': true,
+        'createdBy': actor['name'] ?? '',
+        'createdByUid': actor['uid'] ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       batch.set(db.collection('gyms').doc(widget.gymId).collection('members').doc(uid), {
         'name': name,
         'email': email,
         'role': 'user',
+        'active': true,
+        'createdBy': actor['name'] ?? '',
+        'createdByUid': actor['uid'] ?? '',
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     }
+
+    batch.set(activityRef.doc(), activityFields(
+      type: 'client_created',
+      target: name,
+      targetId: clientDoc.id,
+      targetEmail: email,
+      actor: actor,
+      metadata: {'goal': goal.isEmpty ? 'Objetivo pendiente' : goal},
+    ));
 
     await batch.commit();
 
@@ -228,12 +313,13 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
 
     if (result == null) return;
 
+    final actor = await currentActor();
     final batch = FirebaseFirestore.instance.batch();
     batch.update(clientsRef.doc(clientId), {
       'name': result['name'],
       'email': result['email'],
       'goal': result['goal'],
-      'updatedAt': FieldValue.serverTimestamp(),
+      ...auditUpdateFields(actor),
     });
 
     final relatedRoutines = await routinesRef.where('clientId', isEqualTo: clientId).get();
@@ -241,9 +327,21 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       batch.update(routine.reference, {
         'clientName': result['name'],
         'clientEmail': result['email'],
-        'updatedAt': FieldValue.serverTimestamp(),
+        ...auditUpdateFields(actor),
       });
     }
+
+    batch.set(activityRef.doc(), activityFields(
+      type: 'client_updated',
+      target: result['name'] ?? clientData['name']?.toString() ?? 'Cliente',
+      targetId: clientId,
+      targetEmail: result['email'],
+      actor: actor,
+      metadata: {
+        'previousName': clientData['name'] ?? '',
+        'previousEmail': clientData['email'] ?? '',
+      },
+    ));
 
     await batch.commit();
     showSnack('Cliente actualizado. Rutinas asociadas sincronizadas.');
@@ -276,7 +374,17 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
 
     if (confirm != true) return;
 
-    await clientsRef.doc(clientId).delete();
+    final actor = await currentActor();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.delete(clientsRef.doc(clientId));
+    batch.set(activityRef.doc(), activityFields(
+      type: 'client_deleted',
+      target: clientName,
+      targetId: clientId,
+      targetEmail: clientData['email']?.toString(),
+      actor: actor,
+    ));
+    await batch.commit();
     showSnack('Cliente eliminado. Sus rutinas y entrenamientos se han conservado.');
   }
 
@@ -385,6 +493,10 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
                             runSpacing: 8,
                             children: [
                               InfoChip(text: goal),
+                              if ((data['createdBy'] ?? '').toString().isNotEmpty)
+                                InfoChip(text: 'Creado por ${data['createdBy']}'),
+                              if ((data['updatedBy'] ?? '').toString().isNotEmpty)
+                                InfoChip(text: 'Actualizado por ${data['updatedBy']}'),
                             ],
                           ),
                           const SizedBox(height: 12),

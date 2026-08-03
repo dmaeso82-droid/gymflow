@@ -8,7 +8,6 @@ import '../widgets/header_card.dart';
 import 'settings_page.dart';
 import 'community_page.dart';
 import 'challenges_page.dart';
-import 'rankings_page.dart';
 import 'notifications_page.dart';
 import 'trainer_calendar_page.dart';
 import 'trainer_clients_page.dart';
@@ -178,20 +177,6 @@ class TrainerHomePage extends StatelessWidget {
             userName: trainerName,
             userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
             trainerMode: true,
-          ),
-        ),
-      ),
-      TrainerQuickAction(
-        icon: Icons.leaderboard,
-        title: 'Rankings',
-        subtitle: 'Gimnasio',
-        onTap: () => openPage(
-          context,
-          RankingsPage(
-            gymId: gymId,
-            currentUserId: FirebaseAuth.instance.currentUser?.uid ?? '',
-            currentUserName: trainerName,
-            currentUserEmail: FirebaseAuth.instance.currentUser?.email ?? '',
           ),
         ),
       ),
