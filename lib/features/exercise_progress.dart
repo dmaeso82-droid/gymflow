@@ -2,6 +2,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import '../utils/app_formatters.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
@@ -24,36 +26,20 @@ class ExerciseProgress extends StatefulWidget {
 class _ExerciseProgressState extends State<ExerciseProgress> {
   String? selectedExercise;
 
-  int intValue(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  double doubleValue(dynamic value) {
+double doubleValue(dynamic value) {
     if (value is double) return value;
     if (value is int) return value.toDouble();
     if (value is num) return value.toDouble();
     return double.tryParse((value?.toString() ?? '').replaceAll(',', '.')) ?? 0.0;
   }
 
-  String formatKg(double value) {
-    if (value == value.roundToDouble()) return '${value.round()} kg';
-    return '${value.toStringAsFixed(1).replaceAll('.', ',')} kg';
-  }
-
-  String signedKg(double value) {
-    if (value > 0) return '+${formatKg(value)}';
-    if (value < 0) return '-${formatKg(value.abs())}';
+String signedKg(double value) {
+    if (value > 0) return '+${AppFormatters.formatKg(value)}';
+    if (value < 0) return '-${AppFormatters.formatKg(value.abs())}';
     return '0 kg';
   }
 
-  int timestampSortValue(dynamic value) {
-    if (value is Timestamp) return value.millisecondsSinceEpoch;
-    return 0;
-  }
-
-  String formatDate(dynamic value) {
+String formatDate(dynamic value) {
     if (value is Timestamp) {
       final date = value.toDate();
       final day = date.day.toString().padLeft(2, '0');
@@ -70,12 +56,12 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
       stream: widget.logsRef.where('userId', isEqualTo: widget.userId).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(child: Center(child: CircularProgressIndicator()));
+          return AppCard(child: Center(child: CircularProgressIndicator()));
         }
 
         final logs = snapshot.data?.docs ?? [];
         if (logs.isEmpty) {
-          return const AppCard(
+          return AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -83,7 +69,7 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
                 SizedBox(height: 12),
                 Text(
                   'Todavía no hay entrenamientos registrados para calcular evolución.',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: context.gymMutedText),
                 ),
               ],
             ),
@@ -100,7 +86,7 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
 
         final exerciseNames = groupedLogs.keys.toList()..sort();
         if (exerciseNames.isEmpty) {
-          return const AppCard(child: Text('Todavía no hay ejercicios registrados.'));
+          return AppCard(child: Text('Todavía no hay ejercicios registrados.'));
         }
 
         if (selectedExercise == null || !exerciseNames.contains(selectedExercise)) {
@@ -110,8 +96,8 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
         final progressItems = <Map<String, dynamic>>[];
         groupedLogs.forEach((exercise, docs) {
           docs.sort((a, b) {
-            final aDate = timestampSortValue(a.data()['createdAt']);
-            final bDate = timestampSortValue(b.data()['createdAt']);
+            final aDate = AppFormatters.timestampSortValue(a.data()['createdAt']);
+            final bDate = AppFormatters.timestampSortValue(b.data()['createdAt']);
             return aDate.compareTo(bDate);
           });
 
@@ -122,10 +108,10 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
 
           for (var index = 0; index < docs.length; index++) {
             final data = docs[index].data();
-            final weight = doubleValue(data['weight']);
-            final reps = intValue(data['reps']);
-            final bestWeight = doubleValue(best['weight']);
-            final bestReps = intValue(best['reps']);
+            final weight = AppFormatters.doubleValue(data['weight']);
+            final reps = AppFormatters.intValue(data['reps']);
+            final bestWeight = AppFormatters.doubleValue(best['weight']);
+            final bestReps = AppFormatters.intValue(best['reps']);
 
             points.add({
               'x': index.toDouble(),
@@ -139,11 +125,11 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
             }
           }
 
-          final firstWeight = doubleValue(first['weight']);
-          final latestWeight = doubleValue(latest['weight']);
-          final bestWeight = doubleValue(best['weight']);
-          final latestReps = intValue(latest['reps']);
-          final bestReps = intValue(best['reps']);
+          final firstWeight = AppFormatters.doubleValue(first['weight']);
+          final latestWeight = AppFormatters.doubleValue(latest['weight']);
+          final bestWeight = AppFormatters.doubleValue(best['weight']);
+          final latestReps = AppFormatters.intValue(latest['reps']);
+          final bestReps = AppFormatters.intValue(best['reps']);
           final weightDelta = latestWeight - firstWeight;
 
           progressItems.add({
@@ -162,18 +148,18 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
         });
 
         progressItems.sort((a, b) {
-          final deltaCompare = doubleValue(b['weightDelta']).compareTo(doubleValue(a['weightDelta']));
+          final deltaCompare = AppFormatters.doubleValue(b['weightDelta']).compareTo(AppFormatters.doubleValue(a['weightDelta']));
           if (deltaCompare != 0) return deltaCompare;
-          final bestCompare = doubleValue(b['bestWeight']).compareTo(doubleValue(a['bestWeight']));
+          final bestCompare = AppFormatters.doubleValue(b['bestWeight']).compareTo(AppFormatters.doubleValue(a['bestWeight']));
           if (bestCompare != 0) return bestCompare;
           return a['exercise'].toString().compareTo(b['exercise'].toString());
         });
 
-        final improvedCount = progressItems.where((item) => doubleValue(item['weightDelta']) > 0).length;
+        final improvedCount = progressItems.where((item) => AppFormatters.doubleValue(item['weightDelta']) > 0).length;
         final bestProgress = progressItems.isEmpty ? null : progressItems.first;
         final bestProgressText = bestProgress == null
             ? '-'
-            : '${bestProgress['exercise']} ${signedKg(doubleValue(bestProgress['weightDelta']))}';
+            : '${bestProgress['exercise']} ${AppFormatters.signedKg(AppFormatters.doubleValue(bestProgress['weightDelta']))}';
 
         final selectedItem = progressItems.firstWhere(
           (item) => item['exercise'] == selectedExercise,
@@ -184,8 +170,8 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SectionTitle(icon: Icons.trending_up, title: 'Evolución por ejercicio'),
-              const SizedBox(height: 12),
+              SectionTitle(icon: Icons.trending_up, title: 'Evolución por ejercicio'),
+              SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -194,11 +180,11 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
                   InfoChip(text: 'Mayor progreso: $bestProgressText'),
                 ],
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               DropdownButtonFormField<String>(
                 value: selectedExercise,
-                dropdownColor: const Color(0xFF0F172A),
-                decoration: const InputDecoration(
+                dropdownColor: context.gymSurface,
+                decoration: InputDecoration(
                   labelText: 'Ejercicio',
                   border: OutlineInputBorder(),
                 ),
@@ -210,14 +196,14 @@ class _ExerciseProgressState extends State<ExerciseProgress> {
                   setState(() => selectedExercise = value);
                 },
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               ExerciseProgressDetail(
                 item: selectedItem,
-                formatKg: formatKg,
-                signedKg: signedKg,
-                formatDate: formatDate,
-                doubleValue: doubleValue,
-                intValue: intValue,
+                formatKg: AppFormatters.formatKg,
+                signedKg: AppFormatters.signedKg,
+                formatDate: AppFormatters.formatDate,
+                doubleValue: AppFormatters.doubleValue,
+                intValue: AppFormatters.intValue,
               ),
             ],
           ),
@@ -248,22 +234,22 @@ class ExerciseProgressDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final exercise = item['exercise']?.toString() ?? 'Ejercicio';
-    final latestWeight = doubleValue(item['latestWeight']);
-    final latestReps = intValue(item['latestReps']);
-    final bestWeight = doubleValue(item['bestWeight']);
-    final bestReps = intValue(item['bestReps']);
-    final weightDelta = doubleValue(item['weightDelta']);
-    final series = intValue(item['series']);
+    final latestWeight = AppFormatters.doubleValue(item['latestWeight']);
+    final latestReps = AppFormatters.intValue(item['latestReps']);
+    final bestWeight = AppFormatters.doubleValue(item['bestWeight']);
+    final bestReps = AppFormatters.intValue(item['bestReps']);
+    final weightDelta = AppFormatters.doubleValue(item['weightDelta']);
+    final series = AppFormatters.intValue(item['series']);
     final routineTitle = item['routineTitle']?.toString() ?? 'Rutina';
-    final latestDate = formatDate(item['latestDate']);
+    final latestDate = AppFormatters.formatDate(item['latestDate']);
     final isImproving = weightDelta > 0;
     final points = List<Map<String, dynamic>>.from(item['points'] ?? []);
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF020617),
+        color: context.gymSubtleSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: context.gymBorder),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -276,29 +262,29 @@ class ExerciseProgressDetail extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: (isImproving ? Colors.greenAccent : Colors.white54).withOpacity(0.12),
+                  color: (isImproving ? context.gymFitnessAccent : context.gymMutedText).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   isImproving ? Icons.trending_up : Icons.trending_flat,
-                  color: isImproving ? Colors.greenAccent : Colors.white54,
+                  color: isImproving ? context.gymFitnessAccent : context.gymMutedText,
                 ),
               ),
-              title: Text(exercise, style: const TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(exercise, style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(routineTitle, style: const TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 6),
+                    Text(routineTitle, style: TextStyle(color: context.gymMutedText)),
+                    SizedBox(height: 6),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
                       children: [
-                        InfoChip(text: 'Actual ${formatKg(latestWeight)} x $latestReps'),
-                        InfoChip(text: 'Progreso ${signedKg(weightDelta)}'),
-                        InfoChip(text: 'Mejor ${formatKg(bestWeight)} x $bestReps'),
+                        InfoChip(text: 'Actual ${AppFormatters.formatKg(latestWeight)} x $latestReps'),
+                        InfoChip(text: 'Progreso ${AppFormatters.signedKg(weightDelta)}'),
+                        InfoChip(text: 'Mejor ${AppFormatters.formatKg(bestWeight)} x $bestReps'),
                         InfoChip(text: '$series series'),
                         InfoChip(text: latestDate),
                       ],
@@ -308,13 +294,13 @@ class ExerciseProgressDetail extends StatelessWidget {
               ),
             ),
             if (points.length >= 2) ...[
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               SizedBox(height: 180, child: ExerciseLineChart(points: points, formatKg: formatKg)),
             ] else ...[
-              const SizedBox(height: 8),
-              const Text(
+              SizedBox(height: 8),
+              Text(
                 'Registra al menos 2 series para ver la gráfica de evolución.',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+                style: TextStyle(color: context.gymMutedText, fontSize: 12),
               ),
             ],
           ],
@@ -330,16 +316,9 @@ class ExerciseLineChart extends StatelessWidget {
 
   const ExerciseLineChart({super.key, required this.points, required this.formatKg});
 
-  double doubleValue(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is num) return value.toDouble();
-    return double.tryParse((value?.toString() ?? '').replaceAll(',', '.')) ?? 0.0;
-  }
-
-  @override
+@override
   Widget build(BuildContext context) {
-    final spots = points.map((point) => FlSpot(doubleValue(point['x']), doubleValue(point['weight']))).toList();
+    final spots = points.map((point) => FlSpot(AppFormatters.doubleValue(point['x']), AppFormatters.doubleValue(point['weight']))).toList();
     final weights = spots.map((spot) => spot.y).toList();
     final minWeight = weights.reduce((a, b) => a < b ? a : b);
     final maxWeight = weights.reduce((a, b) => a > b ? a : b);
@@ -356,7 +335,7 @@ class ExerciseLineChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.08), strokeWidth: 1),
+          getDrawingHorizontalLine: (value) => FlLine(color: context.gymBorder, strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -367,21 +346,21 @@ class ExerciseLineChart extends StatelessWidget {
               showTitles: true,
               reservedSize: 48,
               getTitlesWidget: (value, meta) {
-                return Text(formatKg(value), style: const TextStyle(color: Colors.white54, fontSize: 10));
+                return Text(AppFormatters.formatKg(value), style: TextStyle(color: context.gymMutedText, fontSize: 10));
               },
             ),
           ),
         ),
-        borderData: FlBorderData(show: true, border: Border.all(color: Colors.white10)),
+        borderData: FlBorderData(show: true, border: Border.all(color: context.gymBorder)),
         lineBarsData: [
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: Colors.greenAccent,
+            color: context.gymFitnessAccent,
             barWidth: 3,
             isStrokeCapRound: true,
             dotData: FlDotData(show: true),
-            belowBarData: BarAreaData(show: true, color: Colors.greenAccent.withOpacity(0.12)),
+            belowBarData: BarAreaData(show: true, color: context.gymFitnessAccent.withValues(alpha: 0.12)),
           ),
         ],
         lineTouchData: LineTouchData(
@@ -391,8 +370,8 @@ class ExerciseLineChart extends StatelessWidget {
                 final index = spot.x.round();
                 final reps = index >= 0 && index < points.length ? points[index]['reps']?.toString() ?? '-' : '-';
                 return LineTooltipItem(
-                  '${formatKg(spot.y)} x $reps',
-                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  '${AppFormatters.formatKg(spot.y)} x $reps',
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 );
               }).toList();
             },
@@ -402,3 +381,6 @@ class ExerciseLineChart extends StatelessWidget {
     );
   }
 }
+
+
+

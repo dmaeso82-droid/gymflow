@@ -1,6 +1,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
@@ -28,6 +29,19 @@ class ClientProgress extends StatelessWidget {
     if (value is int) return value;
     if (value is num) return value.round();
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double doubleValue(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0.0;
+  }
+
+  String formatCompactNumber(double value) {
+    if (value == 0) return '-';
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toStringAsFixed(1).replaceAll('.', ',');
   }
 
   int timestampSortValue(dynamic value) {
@@ -58,19 +72,19 @@ class ClientProgress extends StatelessWidget {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Eliminar registro del cliente'),
+          backgroundColor: context.gymSurface,
+          title: Text('Eliminar registro del cliente'),
           content: Text('¿Seguro que quieres eliminar $exercise del historial de $clientName? Esta acción no se puede deshacer.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancelar'),
+              child: Text('Cancelar'),
             ),
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Eliminar'),
+              icon: Icon(Icons.delete_outline),
+              label: Text('Eliminar'),
             ),
           ],
         );
@@ -87,6 +101,7 @@ class ClientProgress extends StatelessWidget {
   }
 
   Widget metricTile({
+    required BuildContext context,
     required IconData icon,
     required String value,
     required String label,
@@ -95,14 +110,14 @@ class ClientProgress extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF020617),
+        color: context.gymSubtleSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: context.gymBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.greenAccent, size: compact ? 18 : 20),
+          Icon(icon, color: context.gymPrimary, size: compact ? 18 : 20),
           SizedBox(height: compact ? 6 : 8),
           Text(
             value,
@@ -110,12 +125,12 @@ class ClientProgress extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: compact ? 17 : 20, fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Colors.white60, fontSize: compact ? 11 : 12),
+            style: TextStyle(color: context.gymMutedText, fontSize: compact ? 11 : 12),
           ),
         ],
       ),
@@ -139,9 +154,9 @@ class ClientProgress extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-          color: const Color(0xFF020617),
+          color: context.gymSubtleSurface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: context.gymBorder),
         ),
         child: Row(
           children: [
@@ -149,12 +164,12 @@ class ClientProgress extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: Colors.greenAccent.withOpacity(0.12),
+                color: context.gymPrimary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(13),
               ),
-              child: const Icon(Icons.analytics, color: Colors.greenAccent, size: 19),
+              child: Icon(Icons.analytics, color: context.gymPrimary, size: 19),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -163,21 +178,21 @@ class ClientProgress extends StatelessWidget {
                     exercise,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: TextStyle(fontWeight: FontWeight.w900),
                   ),
-                  const SizedBox(height: 3),
+                  SizedBox(height: 3),
                   Text(
                     '$weight kg · $reps reps · $date',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    style: TextStyle(color: context.gymMutedText, fontSize: 12),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: 2),
                   Text(
                     routineTitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white38, fontSize: 11),
+                    style: TextStyle(color: context.gymMutedText.withValues(alpha: 0.70), fontSize: 11),
                   ),
                 ],
               ),
@@ -188,7 +203,7 @@ class ClientProgress extends StatelessWidget {
               constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
               tooltip: 'Eliminar registro',
               onPressed: () => deleteWorkoutLog(context, doc),
-              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 21),
+              icon: Icon(Icons.delete_outline, color: Colors.redAccent, size: 21),
             ),
           ],
         ),
@@ -198,28 +213,28 @@ class ClientProgress extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF020617),
+        color: context.gymSubtleSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: context.gymBorder),
       ),
       child: ListTile(
         leading: Container(
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: Colors.greenAccent.withOpacity(0.12),
+            color: context.gymPrimary.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Icon(Icons.analytics, color: Colors.greenAccent),
+          child: Icon(Icons.analytics, color: context.gymPrimary),
         ),
-        title: Text(exercise, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(exercise, style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(routineTitle, style: const TextStyle(color: Colors.white70)),
-              const SizedBox(height: 6),
+              Text(routineTitle, style: TextStyle(color: context.gymMutedText)),
+              SizedBox(height: 6),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -235,7 +250,7 @@ class ClientProgress extends StatelessWidget {
         trailing: IconButton(
           tooltip: 'Eliminar registro',
           onPressed: () => deleteWorkoutLog(context, doc),
-          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+          icon: Icon(Icons.delete_outline, color: Colors.redAccent),
         ),
       ),
     );
@@ -251,11 +266,11 @@ class ClientProgress extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SectionTitle(icon: Icons.insights, title: 'Progreso del cliente seleccionado'),
-            const SizedBox(height: 12),
+            SectionTitle(icon: Icons.insights, title: 'Progreso del cliente seleccionado'),
+            SizedBox(height: 12),
             Text(
               '$clientName no tiene email asociado. Añade el email del cliente para poder ver su progreso.',
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: context.gymMutedText),
             ),
           ],
         ),
@@ -276,7 +291,7 @@ class ClientProgress extends StatelessWidget {
           stream: logsRef.where('userEmail', isEqualTo: normalizedEmail).snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const AppCard(child: Center(child: CircularProgressIndicator()));
+              return AppCard(child: Center(child: CircularProgressIndicator()));
             }
 
             final logs = [...(snapshot.data?.docs ?? [])];
@@ -291,11 +306,11 @@ class ClientProgress extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SectionTitle(icon: Icons.insights, title: 'Progreso del cliente seleccionado'),
-                    const SizedBox(height: 12),
+                    SectionTitle(icon: Icons.insights, title: 'Progreso del cliente seleccionado'),
+                    SizedBox(height: 12),
                     Text(
                       '$clientName todavía no tiene entrenamientos registrados con el email $normalizedEmail.',
-                      style: const TextStyle(color: Colors.white70),
+                      style: TextStyle(color: context.gymMutedText),
                     ),
                   ],
                 ),
@@ -304,15 +319,17 @@ class ClientProgress extends StatelessWidget {
 
             final exercises = <String>{};
             Map<String, dynamic>? bestRecord;
+            double totalVolume = 0;
             for (final doc in logs) {
               final data = doc.data();
               final exercise = data['exercise']?.toString().trim() ?? '';
-              final weight = intValue(data['weight']);
+              final weight = doubleValue(data['weight']);
               final reps = intValue(data['reps']);
+              totalVolume += weight * reps;
               if (exercise.isNotEmpty) exercises.add(exercise);
               if (bestRecord == null ||
-                  weight > intValue(bestRecord['weight']) ||
-                  (weight == intValue(bestRecord['weight']) && reps > intValue(bestRecord['reps']))) {
+                  weight > doubleValue(bestRecord['weight']) ||
+                  (weight == doubleValue(bestRecord['weight']) && reps > intValue(bestRecord['reps']))) {
                 bestRecord = data;
               }
             }
@@ -320,7 +337,7 @@ class ClientProgress extends StatelessWidget {
             final latest = logs.first.data();
             final latestDate = formatDate(latest['createdAt'], compact: isCompact);
             final bestExercise = bestRecord?['exercise']?.toString() ?? 'Sin marca';
-            final bestWeight = intValue(bestRecord?['weight']);
+            final bestWeight = formatCompactNumber(doubleValue(bestRecord?['weight']));
             final bestReps = intValue(bestRecord?['reps']);
             final recentLogs = logs.take(isCompact ? 6 : 5).toList();
 
@@ -328,18 +345,18 @@ class ClientProgress extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionTitle(icon: Icons.insights, title: 'Progreso del cliente seleccionado'),
+                  SectionTitle(icon: Icons.insights, title: 'Progreso del cliente seleccionado'),
                   SizedBox(height: isCompact ? 6 : 8),
                   Text(
                     isCompact ? clientName : '$clientName · $normalizedEmail',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: context.gymMutedText),
                   ),
                   SizedBox(height: isCompact ? 10 : 12),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final columns = isCompact ? 2 : 4;
+                      final columns = isCompact ? 2 : 5;
                       const spacing = 8.0;
                       final width = (constraints.maxWidth - spacing * (columns - 1)) / columns;
                       return Wrap(
@@ -349,6 +366,7 @@ class ClientProgress extends StatelessWidget {
                           SizedBox(
                             width: width,
                             child: metricTile(
+                              context: context,
                               icon: Icons.list_alt,
                               value: logs.length.toString(),
                               label: 'Series',
@@ -358,6 +376,17 @@ class ClientProgress extends StatelessWidget {
                           SizedBox(
                             width: width,
                             child: metricTile(
+                              context: context,
+                              icon: Icons.monitor_weight,
+                              value: '${formatCompactNumber(totalVolume)} kg',
+                              label: 'Volumen',
+                              compact: isCompact,
+                            ),
+                          ),
+                          SizedBox(
+                            width: width,
+                            child: metricTile(
+                              context: context,
                               icon: Icons.fitness_center,
                               value: exercises.length.toString(),
                               label: 'Ejercicios',
@@ -367,6 +396,7 @@ class ClientProgress extends StatelessWidget {
                           SizedBox(
                             width: width,
                             child: metricTile(
+                              context: context,
                               icon: Icons.schedule,
                               value: latestDate,
                               label: 'Último',
@@ -376,6 +406,7 @@ class ClientProgress extends StatelessWidget {
                           SizedBox(
                             width: width,
                             child: metricTile(
+                              context: context,
                               icon: Icons.emoji_events,
                               value: '$bestWeight kg x $bestReps',
                               label: bestExercise,
@@ -402,3 +433,6 @@ class ClientProgress extends StatelessWidget {
     );
   }
 }
+
+
+

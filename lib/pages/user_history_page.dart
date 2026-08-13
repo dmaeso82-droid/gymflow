@@ -17,7 +17,7 @@ class UserHistoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Historial')),
+      appBar: AppBar(title: Text('Historial')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -29,3 +29,6 @@ class UserHistoryPage extends StatelessWidget {
     );
   }
 }
+
+
+

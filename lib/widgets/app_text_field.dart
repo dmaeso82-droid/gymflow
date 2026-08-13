@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class AppTextField extends StatelessWidget {
   final TextEditingController controller;
@@ -7,7 +8,7 @@ class AppTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final bool obscureText;
 
-  const AppTextField({
+  AppTextField({
     super.key,
     required this.controller,
     required this.label,
@@ -26,9 +27,12 @@ class AppTextField extends StatelessWidget {
         labelText: label,
         hintText: hint,
         filled: true,
-        fillColor: const Color(0xFF020617),
+        fillColor: context.gymInsetSurface,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
 }
+
+
+

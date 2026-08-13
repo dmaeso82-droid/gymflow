@@ -8,3 +8,6 @@ int routineProgress(List<dynamic> exercises) {
 
   return ((done / exercises.length) * 100).round();
 }
+
+
+

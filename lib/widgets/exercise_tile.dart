@@ -1,6 +1,6 @@
-
 import 'package:flutter/material.dart';
-
+import '../theme/app_theme.dart';
+import '../utils/workout_utils.dart';
 import 'info_chip.dart';
 
 class ExerciseTile extends StatelessWidget {
@@ -19,38 +19,26 @@ class ExerciseTile extends StatelessWidget {
     this.onDelete,
   });
 
-  int intValue(dynamic value, {int fallback = 0}) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    final text = value?.toString() ?? '';
-    final match = RegExp(r'\d+').firstMatch(text);
-    return int.tryParse(match?.group(0) ?? '') ?? fallback;
-  }
-
-  int totalSets() {
-    final parsed = intValue(exercise['sets'], fallback: 1);
-    return parsed <= 0 ? 1 : parsed;
-  }
-
-  int completedSets() {
-    final total = totalSets();
-    final rawCompleted = intValue(exercise['completedSets'], fallback: -1);
-    if (rawCompleted >= 0) return rawCompleted.clamp(0, total).toInt();
-    if (exercise['done'] == true) return total;
-    return 0;
-  }
-
-  String compactDetails({required int completed, required int total, required String reps, required String weight, required String rest}) {
+  String compactDetails({
+    required int completed,
+    required int total,
+    required String reps,
+    required String weight,
+    required String rest,
+  }) {
     final parts = <String>[
       '$completed/$total series',
       '$reps reps',
     ];
     if (weight.trim().isNotEmpty) parts.add(weight.trim());
-    if (rest.trim().isNotEmpty && rest.trim() != '-') parts.add(rest.trim().startsWith('Descanso') ? rest.trim() : 'Descanso $rest');
+    if (rest.trim().isNotEmpty && rest.trim() != '-') {
+      parts.add(rest.trim().startsWith('Descanso') ? rest.trim() : 'Descanso $rest');
+    }
     return parts.join(' · ');
   }
 
   Widget buildCompactTile({
+    required BuildContext context,
     required bool done,
     required String name,
     required String details,
@@ -61,7 +49,7 @@ class ExerciseTile extends StatelessWidget {
       fontWeight: FontWeight.w800,
       height: 1.15,
       decoration: done ? TextDecoration.lineThrough : TextDecoration.none,
-      color: done ? Colors.greenAccent : Colors.white,
+      color: done ? context.gymFitnessAccent : context.gymText,
     );
 
     return InkWell(
@@ -71,9 +59,9 @@ class ExerciseTile extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF020617),
+          color: context.gymInsetSurface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: done ? Colors.greenAccent.withOpacity(0.28) : Colors.white10),
+          border: Border.all(color: done ? context.gymStrongBorder : context.gymBorder),
         ),
         child: Column(
           children: [
@@ -87,12 +75,12 @@ class ExerciseTile extends StatelessWidget {
                     padding: const EdgeInsets.all(4),
                     child: Icon(
                       done ? Icons.check_circle : Icons.radio_button_unchecked,
-                      color: done ? Colors.greenAccent : Colors.white54,
+                      color: done ? context.gymFitnessAccent : context.gymMutedText,
                       size: 24,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,17 +91,17 @@ class ExerciseTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: titleStyle,
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         details,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.2),
+                        style: TextStyle(color: context.gymMutedText, fontSize: 12, height: 1.2),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 if (trainerMode)
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -124,7 +112,7 @@ class ExerciseTile extends StatelessWidget {
                         constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                         tooltip: 'Editar ejercicio',
                         onPressed: onEdit,
-                        icon: const Icon(Icons.edit, color: Colors.greenAccent, size: 21),
+                        icon: Icon(Icons.edit, color: context.gymPrimary, size: 21),
                       ),
                       IconButton(
                         visualDensity: VisualDensity.compact,
@@ -132,22 +120,22 @@ class ExerciseTile extends StatelessWidget {
                         constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                         tooltip: 'Eliminar ejercicio',
                         onPressed: onDelete,
-                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 21),
+                        icon: Icon(Icons.delete_outline, color: Colors.redAccent, size: 21),
                       ),
                     ],
                   )
                 else
-                  const Icon(Icons.play_circle_outline, color: Colors.white54, size: 24),
+                  Icon(Icons.play_circle_outline, color: context.gymMutedText, size: 24),
               ],
             ),
-            const SizedBox(height: 7),
+            SizedBox(height: 7),
             ClipRRect(
               borderRadius: BorderRadius.circular(999),
               child: LinearProgressIndicator(
                 value: progressValue,
                 minHeight: 3,
-                backgroundColor: Colors.white10,
-                color: done ? Colors.greenAccent : Colors.lightGreenAccent,
+                backgroundColor: context.gymProgressTrack,
+                color: done ? context.gymFitnessAccent : context.gymPrimary,
               ),
             ),
           ],
@@ -157,6 +145,7 @@ class ExerciseTile extends StatelessWidget {
   }
 
   Widget buildExpandedTile({
+    required BuildContext context,
     required bool done,
     required String name,
     required String reps,
@@ -169,9 +158,9 @@ class ExerciseTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF020617),
+        color: context.gymInsetSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: done ? Colors.greenAccent.withOpacity(0.28) : Colors.white10),
+        border: Border.all(color: done ? context.gymStrongBorder : context.gymBorder),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -180,7 +169,7 @@ class ExerciseTile extends StatelessWidget {
           onPressed: onToggle,
           icon: Icon(
             done ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: done ? Colors.greenAccent : Colors.white54,
+            color: done ? context.gymFitnessAccent : context.gymMutedText,
           ),
         ),
         title: Text(
@@ -188,7 +177,7 @@ class ExerciseTile extends StatelessWidget {
           style: TextStyle(
             fontWeight: FontWeight.bold,
             decoration: done ? TextDecoration.lineThrough : TextDecoration.none,
-            color: done ? Colors.greenAccent : Colors.white,
+            color: done ? context.gymFitnessAccent : context.gymText,
           ),
         ),
         subtitle: Padding(
@@ -206,14 +195,14 @@ class ExerciseTile extends StatelessWidget {
                   InfoChip(text: 'Descanso $rest'),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
                   value: progressValue,
                   minHeight: 6,
-                  backgroundColor: Colors.white12,
-                  color: done ? Colors.greenAccent : Colors.lightGreenAccent,
+                  backgroundColor: context.gymProgressTrack,
+                  color: done ? context.gymFitnessAccent : context.gymPrimary,
                 ),
               ),
             ],
@@ -226,24 +215,24 @@ class ExerciseTile extends StatelessWidget {
                   IconButton(
                     tooltip: 'Editar ejercicio',
                     onPressed: onEdit,
-                    icon: const Icon(Icons.edit, color: Colors.greenAccent),
+                    icon: Icon(Icons.edit, color: context.gymPrimary),
                   ),
                   IconButton(
                     tooltip: 'Eliminar ejercicio',
                     onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    icon: Icon(Icons.delete_outline, color: Colors.redAccent),
                   ),
                 ],
               )
-            : const Icon(Icons.play_circle_outline, color: Colors.white54),
+            : Icon(Icons.play_circle_outline, color: context.gymMutedText),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final total = totalSets();
-    final completed = completedSets();
+    final total = workoutTotalSets(exercise);
+    final completed = workoutCompletedSets(exercise);
     final done = completed >= total || exercise['done'] == true;
     final name = exercise['name'] as String? ?? 'Ejercicio';
     final reps = exercise['reps']?.toString() ?? '-';
@@ -254,6 +243,7 @@ class ExerciseTile extends StatelessWidget {
 
     if (isCompact) {
       return buildCompactTile(
+        context: context,
         done: done,
         name: name,
         details: compactDetails(completed: completed, total: total, reps: reps, weight: weight, rest: rest),
@@ -262,6 +252,7 @@ class ExerciseTile extends StatelessWidget {
     }
 
     return buildExpandedTile(
+      context: context,
       done: done,
       name: name,
       reps: reps,
@@ -273,3 +264,6 @@ class ExerciseTile extends StatelessWidget {
     );
   }
 }
+
+
+

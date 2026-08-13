@@ -21,15 +21,15 @@ class ClientGoalsUserPanel extends StatelessWidget {
         final completed=goals.where((g)=>g.data()['completed']==true).length;
         return AppCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start,children:[
-            const SectionTitle(icon: Icons.flag,title:'Mis objetivos'),
-            const SizedBox(height:12),
+            SectionTitle(icon: Icons.flag,title:'Mis objetivos'),
+            SizedBox(height:12),
             Wrap(spacing:8,runSpacing:8,children:[
               InfoChip(text:'${goals.length} objetivos'),
               InfoChip(text:'$completed completados'),
             ]),
-            const SizedBox(height:12),
+            SizedBox(height:12),
             if(goals.isEmpty)
-              const Text('Tu entrenador todavía no ha definido objetivos.',style: TextStyle(color: Colors.white70))
+              Text('Tu entrenador todavía no ha definido objetivos.',style: TextStyle(color: Colors.white70))
             else
               ...goals.map((g){
                 final d=g.data();
@@ -49,3 +49,6 @@ class ClientGoalsUserPanel extends StatelessWidget {
     );
   }
 }
+
+
+

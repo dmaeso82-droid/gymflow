@@ -1,10 +1,11 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../utils/day_utils.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
-import '../widgets/section_title.dart';
 
 class TrainerCalendarPage extends StatefulWidget {
   final String gymId;
@@ -28,7 +29,6 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
       .doc(widget.gymId)
       .collection('routines');
 
-  static const weekDays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +37,7 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
     final sectionGap = isCompact ? 10.0 : 16.0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Calendario semanal')),
+      appBar: AppBar(title: Text('Calendario semanal')),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
@@ -54,8 +54,8 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.person_search, color: Colors.greenAccent, size: 20),
-                          const SizedBox(width: 8),
+                          Icon(Icons.person_search, color: context.gymPrimary, size: 20),
+                          SizedBox(width: 8),
                           Text(
                             'Cliente',
                             style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
@@ -64,12 +64,12 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                       ),
                       SizedBox(height: isCompact ? 8 : 12),
                       if (clients.isEmpty)
-                        const Text('Primero crea un cliente.', style: TextStyle(color: Colors.white70))
+                        Text('Primero crea un cliente.', style: TextStyle(color: context.gymMutedText))
                       else
                         DropdownButtonFormField<String>(
-                          value: selectedClientId,
+                          initialValue: selectedClientId,
                           isDense: isCompact,
-                          dropdownColor: const Color(0xFF0F172A),
+                          dropdownColor: context.gymSurface,
                           decoration: InputDecoration(
                             labelText: 'Cliente seleccionado',
                             border: const OutlineInputBorder(),
@@ -97,18 +97,16 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                 ),
                 SizedBox(height: sectionGap),
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: routinesRef.snapshots(),
+                  stream: selectedClientId == null ? null : routinesRef.where('clientId', isEqualTo: selectedClientId).snapshots(),
                   builder: (context, routineSnapshot) {
-                    final routines = (routineSnapshot.data?.docs ?? [])
-                        .where((doc) => doc.data()['clientId'] == selectedClientId)
-                        .toList();
+                    final routines = (routineSnapshot.data?.docs ?? []).toList();
 
                     return Column(
-                      children: weekDays.map((day) {
+                      children: DayUtils.weekDays.map((day) {
                         final dayRoutines = routines.where((doc) => (doc.data()['day'] ?? '').toString() == day).toList();
-                        final totalExercises = dayRoutines.fold<int>(0, (sum, doc) {
+                        final totalExercises = dayRoutines.fold<int>(0, (total, doc) {
                           final exercises = List<dynamic>.from(doc.data()['exercises'] ?? []);
-                          return sum + exercises.length;
+                          return total + exercises.length;
                         });
 
                         return AppCard(
@@ -131,7 +129,7 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                                         vertical: isCompact ? 4 : 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.greenAccent.withOpacity(0.14),
+                                        color: context.gymFitnessAccent.withValues(alpha: 0.14),
                                         borderRadius: BorderRadius.circular(999),
                                       ),
                                       child: Text(
@@ -145,7 +143,7 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                               if (dayRoutines.isEmpty)
                                 Text(
                                   'Sin rutina asignada.',
-                                  style: TextStyle(color: Colors.white70, fontSize: isCompact ? 13 : 14),
+                                  style: TextStyle(color: context.gymMutedText, fontSize: isCompact ? 13 : 14),
                                 )
                               else
                                 ...dayRoutines.map((doc) {
@@ -158,26 +156,26 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                                       margin: const EdgeInsets.only(bottom: 6),
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF020617),
+                                        color: context.gymSubtleSurface,
                                         borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(color: Colors.white10),
+                                        border: Border.all(color: context.gymBorder),
                                       ),
                                       child: Row(
                                         children: [
-                                          const Icon(Icons.fitness_center, size: 17, color: Colors.greenAccent),
-                                          const SizedBox(width: 8),
+                                          Icon(Icons.fitness_center, size: 17, color: context.gymPrimary),
+                                          SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
                                               title,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontWeight: FontWeight.w800),
+                                              style: TextStyle(fontWeight: FontWeight.w800),
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
+                                          SizedBox(width: 8),
                                           Text(
                                             '${exercises.length} ej.',
-                                            style: const TextStyle(color: Colors.white60, fontSize: 12),
+                                            style: TextStyle(color: context.gymMutedText, fontSize: 12),
                                           ),
                                         ],
                                       ),
@@ -197,10 +195,10 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
                                   );
                                 }),
                               if (isCompact && totalExercises > 0) ...[
-                                const SizedBox(height: 2),
+                                SizedBox(height: 2),
                                 Text(
                                   '$totalExercises ejercicios en total',
-                                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                  style: TextStyle(color: context.gymMutedText.withValues(alpha: 0.70), fontSize: 11),
                                 ),
                               ],
                             ],
@@ -218,3 +216,6 @@ class _TrainerCalendarPageState extends State<TrainerCalendarPage> {
     );
   }
 }
+
+
+

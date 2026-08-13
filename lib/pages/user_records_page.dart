@@ -17,7 +17,7 @@ class UserRecordsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Récords personales')),
+      appBar: AppBar(title: Text('Récords personales')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -29,3 +29,6 @@ class UserRecordsPage extends StatelessWidget {
     );
   }
 }
+
+
+

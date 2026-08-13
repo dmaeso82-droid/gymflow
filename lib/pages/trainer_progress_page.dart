@@ -1,10 +1,11 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../features/client_progress.dart';
 import '../widgets/app_card.dart';
-import '../widgets/section_title.dart';
+import '../widgets/physical_progress_summary.dart';
 
 class TrainerProgressPage extends StatefulWidget {
   final String gymId;
@@ -29,7 +30,7 @@ class _TrainerProgressPageState extends State<TrainerProgressPage> {
     final pagePadding = isCompact ? 12.0 : 16.0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Progreso')),
+      appBar: AppBar(title: Text('Progreso')),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
@@ -51,8 +52,8 @@ class _TrainerProgressPageState extends State<TrainerProgressPage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.person_search, color: Colors.greenAccent, size: 20),
-                          const SizedBox(width: 8),
+                          Icon(Icons.person_search, color: context.gymPrimary, size: 20),
+                          SizedBox(width: 8),
                           Text(
                             'Cliente',
                             style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
@@ -61,15 +62,15 @@ class _TrainerProgressPageState extends State<TrainerProgressPage> {
                       ),
                       SizedBox(height: isCompact ? 8 : 12),
                       if (clients.isEmpty)
-                        const Text('Primero crea un cliente.', style: TextStyle(color: Colors.white70))
+                        Text('Primero crea un cliente.', style: TextStyle(color: context.gymMutedText))
                       else
                         DropdownButtonFormField<String>(
-                          value: selectedClientId,
+                          initialValue: selectedClientId,
                           isDense: isCompact,
-                          dropdownColor: const Color(0xFF0F172A),
+                          dropdownColor: context.gymSurface,
                           decoration: InputDecoration(
                             labelText: 'Cliente seleccionado',
-                            border: const OutlineInputBorder(),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
                             contentPadding: EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: isCompact ? 10 : 14,
@@ -93,12 +94,21 @@ class _TrainerProgressPageState extends State<TrainerProgressPage> {
                   ),
                 ),
                 SizedBox(height: isCompact ? 10 : 16),
-                if (selected != null)
+                if (selected != null) ...[
+                  PhysicalProgressSummary(
+                    gymId: widget.gymId,
+                    userId: selected.id,
+                    userEmail: (selected.data()['email'] ?? '').toString().toLowerCase(),
+                    title: 'Resumen físico del cliente',
+                    emptyText: 'Este cliente todavía no tiene medidas corporales registradas.',
+                  ),
+                  SizedBox(height: isCompact ? 10 : 16),
                   ClientProgress(
                     gymId: widget.gymId,
                     clientName: selected.data()['name']?.toString() ?? 'Cliente',
                     clientEmail: (selected.data()['email'] ?? '').toString().toLowerCase(),
                   ),
+                ],
               ],
             );
           },
@@ -107,3 +117,6 @@ class _TrainerProgressPageState extends State<TrainerProgressPage> {
     );
   }
 }
+
+
+

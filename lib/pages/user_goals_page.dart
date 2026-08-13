@@ -11,7 +11,7 @@ class UserGoalsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis objetivos')),
+      appBar: AppBar(title: Text('Mis objetivos')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -23,3 +23,6 @@ class UserGoalsPage extends StatelessWidget {
     );
   }
 }
+
+
+

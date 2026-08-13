@@ -1,45 +1,10 @@
 
 import 'package:flutter/material.dart';
+import '../utils/workout_utils.dart';
+import '../theme/app_theme.dart';
 
 import 'app_card.dart';
 import 'exercise_tile.dart';
-
-int intValue(dynamic value, {int fallback = 0}) {
-  if (value is int) return value;
-  if (value is num) return value.round();
-  final text = value?.toString() ?? '';
-  final match = RegExp(r'\d+').firstMatch(text);
-  return int.tryParse(match?.group(0) ?? '') ?? fallback;
-}
-
-int exerciseTotalSets(Map<String, dynamic> exercise) {
-  final parsed = intValue(exercise['sets'], fallback: 1);
-  return parsed <= 0 ? 1 : parsed;
-}
-
-int exerciseCompletedSets(Map<String, dynamic> exercise) {
-  final total = exerciseTotalSets(exercise);
-  final rawCompleted = intValue(exercise['completedSets'], fallback: -1);
-  if (rawCompleted >= 0) return rawCompleted.clamp(0, total).toInt();
-  if (exercise['done'] == true) return total;
-  return 0;
-}
-
-int routineProgressBySets(List<dynamic> exercises) {
-  if (exercises.isEmpty) return 0;
-  var totalSets = 0;
-  var completedSets = 0;
-
-  for (final item in exercises) {
-    final exercise = Map<String, dynamic>.from(item as Map);
-    final total = exerciseTotalSets(exercise);
-    totalSets += total;
-    completedSets += exerciseCompletedSets(exercise);
-  }
-
-  if (totalSets == 0) return 0;
-  return ((completedSets / totalSets) * 100).round().clamp(0, 100).toInt();
-}
 
 class RoutineCard extends StatelessWidget {
   final String title;
@@ -49,6 +14,8 @@ class RoutineCard extends StatelessWidget {
   final List<dynamic> exercises;
   final bool trainerMode;
   final bool archived;
+  final int commentsCount;
+  final VoidCallback? onOpenComments;
   final VoidCallback? onAddExercise;
   final VoidCallback? onEditRoutine;
   final VoidCallback? onDeleteRoutine;
@@ -66,6 +33,8 @@ class RoutineCard extends StatelessWidget {
     required this.exercises,
     required this.trainerMode,
     this.archived = false,
+    this.commentsCount = 0,
+    this.onOpenComments,
     required this.onToggleExercise,
     this.onAddExercise,
     this.onEditRoutine,
@@ -75,13 +44,29 @@ class RoutineCard extends StatelessWidget {
     this.onLogWorkout,
   });
 
+  String displayTitle() {
+    final raw = title.trim();
+    if (raw.contains('·')) {
+      final last = raw.split('·').last.trim();
+      if (last.isNotEmpty) return last;
+    }
+    final cleanup = raw
+        .replaceAll(RegExp(r'Hipertrofia\s*\d+D', caseSensitive: false), '')
+        .replaceAll(RegExp(r'Fuerza\s*\d+D', caseSensitive: false), '')
+        .replaceAll(RegExp(r'Definición\s*\d+D', caseSensitive: false), '')
+        .replaceAll(RegExp(r'Pérdida\s*\d+D', caseSensitive: false), '')
+        .replaceAll(RegExp(r'Principiante|Intermedio|Avanzado', caseSensitive: false), '')
+        .replaceAll('·', '')
+        .trim();
+    return cleanup.isEmpty ? raw : cleanup;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final progress = routineProgressBySets(exercises);
+    final progress = routineSetSummary(exercises).progressPercent;
     final isCompact = MediaQuery.of(context).size.width < 600;
     final titleSize = isCompact ? 18.0 : 22.0;
     final cardBottomMargin = isCompact ? 10.0 : 16.0;
-    final notesPadding = isCompact ? 10.0 : 12.0;
     final progressHeight = isCompact ? 5.0 : 8.0;
     final exerciseTopSpacing = isCompact ? 10.0 : 16.0;
 
@@ -95,7 +80,7 @@ class RoutineCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  title,
+                  displayTitle(),
                   maxLines: isCompact ? 2 : null,
                   overflow: isCompact ? TextOverflow.ellipsis : TextOverflow.visible,
                   style: TextStyle(fontSize: titleSize, fontWeight: FontWeight.w900, height: 1.15),
@@ -105,7 +90,7 @@ class RoutineCard extends StatelessWidget {
                 SizedBox(width: isCompact ? 6 : 8),
                 Chip(
                   visualDensity: isCompact ? VisualDensity.compact : VisualDensity.standard,
-                  label: const Text('ARCHIVADA'),
+                  label: Text('ARCHIVADA'),
                   backgroundColor: Colors.orangeAccent.withOpacity(0.16),
                   labelStyle: TextStyle(
                     color: Colors.orangeAccent,
@@ -122,7 +107,7 @@ class RoutineCard extends StatelessWidget {
                   constraints: isCompact ? const BoxConstraints(minWidth: 34, minHeight: 34) : null,
                   tooltip: 'Editar rutina',
                   onPressed: onEditRoutine,
-                  icon: Icon(Icons.edit, color: Colors.greenAccent, size: isCompact ? 21 : 24),
+                  icon: Icon(Icons.edit, color: context.gymPrimary, size: isCompact ? 21 : 24),
                 ),
                 IconButton(
                   visualDensity: isCompact ? VisualDensity.compact : VisualDensity.standard,
@@ -138,23 +123,39 @@ class RoutineCard extends StatelessWidget {
           SizedBox(height: isCompact ? 4 : 6),
           Row(
             children: [
-              const Icon(Icons.calendar_month, size: 16, color: Colors.white60),
-              const SizedBox(width: 6),
+              Icon(Icons.calendar_month, size: 16, color: context.gymMutedText),
+              SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '$day · $clientName',
+                  day,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white60),
+                  style: TextStyle(color: context.gymMutedText),
                 ),
               ),
+              if (onOpenComments != null) ...[
+                SizedBox(width: 6),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    visualDensity: isCompact ? VisualDensity.compact : VisualDensity.standard,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isCompact ? 8 : 10,
+                      vertical: isCompact ? 4 : 6,
+                    ),
+                  ),
+                  onPressed: onOpenComments,
+                  icon: Icon(Icons.chat_bubble_outline, size: 17),
+                  label: Text('$commentsCount'),
+                ),
+              ],
+              SizedBox(width: 6),
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: isCompact ? 10 : 12,
                   vertical: isCompact ? 6 : 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.15),
+                  color: context.gymFitnessAccent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -164,33 +165,17 @@ class RoutineCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: isCompact ? 8 : 10),
-          if (notes.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(notesPadding),
-              decoration: BoxDecoration(
-                color: const Color(0xFF020617),
-                borderRadius: BorderRadius.circular(isCompact ? 12 : 14),
-              ),
-              child: Text(
-                notes,
-                maxLines: isCompact ? 2 : null,
-                overflow: isCompact ? TextOverflow.ellipsis : TextOverflow.visible,
-                style: TextStyle(color: Colors.white70, fontSize: isCompact ? 13 : 14, height: 1.35),
-              ),
-            ),
           SizedBox(height: isCompact ? 8 : 12),
           LinearProgressIndicator(
             value: progress / 100,
             minHeight: progressHeight,
             borderRadius: BorderRadius.circular(999),
-            backgroundColor: Colors.white12,
-            color: Colors.greenAccent,
+            backgroundColor: context.gymProgressTrack,
+            color: context.gymFitnessAccent,
           ),
           SizedBox(height: exerciseTopSpacing),
           if (exercises.isEmpty)
-            const Text('Esta rutina todavía no tiene ejercicios.', style: TextStyle(color: Colors.white70))
+            Text('Esta rutina todavía no tiene ejercicios.', style: TextStyle(color: context.gymMutedText))
           else
             ...exercises.map((item) {
               final exercise = Map<String, dynamic>.from(item as Map);
@@ -198,7 +183,7 @@ class RoutineCard extends StatelessWidget {
                 exercise: exercise,
                 trainerMode: trainerMode,
                 onToggle: () {
-                  final exerciseId = exercise['id'] as String;
+                  final exerciseId = exercise['id']?.toString() ?? '';
                   if (trainerMode) {
                     onToggleExercise(exerciseId, !(exercise['done'] == true));
                   } else if (onLogWorkout != null) {
@@ -207,8 +192,8 @@ class RoutineCard extends StatelessWidget {
                     onToggleExercise(exerciseId, !(exercise['done'] == true));
                   }
                 },
-                onEdit: onEditExercise == null ? null : () => onEditExercise!(exercise['id'] as String),
-                onDelete: onDeleteExercise == null ? null : () => onDeleteExercise!(exercise['id'] as String),
+                onEdit: onEditExercise == null ? null : () => onEditExercise!(exercise['id']?.toString() ?? ''),
+                onDelete: onDeleteExercise == null ? null : () => onDeleteExercise!(exercise['id']?.toString() ?? ''),
               );
             }),
           if (trainerMode) ...[
@@ -217,8 +202,8 @@ class RoutineCard extends StatelessWidget {
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: onAddExercise,
-                icon: const Icon(Icons.add),
-                label: const Text('Añadir ejercicio'),
+                icon: Icon(Icons.add),
+                label: Text('Añadir ejercicio'),
               ),
             ),
           ],
@@ -227,3 +212,6 @@ class RoutineCard extends StatelessWidget {
     );
   }
 }
+
+
+

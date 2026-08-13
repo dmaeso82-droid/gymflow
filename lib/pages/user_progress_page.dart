@@ -17,7 +17,7 @@ class UserProgressPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Evolución')),
+      appBar: AppBar(title: Text('Evolución')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -29,3 +29,6 @@ class UserProgressPage extends StatelessWidget {
     );
   }
 }
+
+
+

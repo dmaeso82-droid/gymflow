@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../features/body_measurements.dart';
 import '../widgets/app_card.dart';
 import '../widgets/section_title.dart';
+import 'progress_photos_page.dart';
 
 class TrainerMeasurementsPage extends StatefulWidget {
   final String gymId;
@@ -25,19 +27,17 @@ class _TrainerMeasurementsPageState extends State<TrainerMeasurementsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Medidas')),
+      appBar: AppBar(title: Text('Medidas')),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
           builder: (context, snapshot) {
             final clients = snapshot.data?.docs ?? [];
             if (selectedClientId == null && clients.isNotEmpty) selectedClientId = clients.first.id;
-
             QueryDocumentSnapshot<Map<String, dynamic>>? selected;
             for (final doc in clients) {
               if (doc.id == selectedClientId) selected = doc;
             }
-
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -45,15 +45,15 @@ class _TrainerMeasurementsPageState extends State<TrainerMeasurementsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle(icon: Icons.person_search, title: 'Cliente'),
-                      const SizedBox(height: 12),
+                      SectionTitle(icon: Icons.person_search, title: 'Cliente'),
+                      SizedBox(height: 12),
                       if (clients.isEmpty)
-                        const Text('Primero crea un cliente.', style: TextStyle(color: Colors.white70))
+                        Text('Primero crea un cliente.', style: TextStyle(color: context.gymMutedText))
                       else
                         DropdownButtonFormField<String>(
-                          value: selectedClientId,
-                          dropdownColor: const Color(0xFF0F172A),
-                          decoration: const InputDecoration(labelText: 'Cliente seleccionado', border: OutlineInputBorder()),
+                          initialValue: selectedClientId,
+                          dropdownColor: context.gymSurface,
+                          decoration: InputDecoration(labelText: 'Cliente seleccionado', border: OutlineInputBorder(borderRadius: BorderRadius.circular(16))),
                           items: clients.map((doc) {
                             final data = doc.data();
                             return DropdownMenuItem(value: doc.id, child: Text('${data['name'] ?? 'Sin nombre'} · ${data['email'] ?? 'Sin email'}'));
@@ -63,8 +63,8 @@ class _TrainerMeasurementsPageState extends State<TrainerMeasurementsPage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                if (selected != null)
+                SizedBox(height: 16),
+                if (selected != null) ...[
                   BodyMeasurementsPanel(
                     gymId: widget.gymId,
                     filterField: 'userEmail',
@@ -72,6 +72,15 @@ class _TrainerMeasurementsPageState extends State<TrainerMeasurementsPage> {
                     title: 'Medidas del cliente',
                     emptyText: 'Este cliente todavía no tiene medidas corporales registradas.',
                   ),
+                  SizedBox(height: 16),
+                  ProgressPhotosPanel(
+                    gymId: widget.gymId,
+                    userId: selected.id,
+                    userName: selected.data()['name']?.toString() ?? 'Cliente',
+                    userEmail: (selected.data()['email'] ?? '').toString().toLowerCase(),
+                    allowAdd: false,
+                  ),
+                ],
               ],
             );
           },
@@ -80,3 +89,6 @@ class _TrainerMeasurementsPageState extends State<TrainerMeasurementsPage> {
     );
   }
 }
+
+
+

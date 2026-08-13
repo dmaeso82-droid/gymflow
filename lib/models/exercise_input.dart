@@ -13,3 +13,6 @@ class ExerciseInput {
     required this.rest,
   });
 }
+
+
+

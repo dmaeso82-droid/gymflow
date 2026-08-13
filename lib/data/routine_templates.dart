@@ -1,3 +1,4 @@
+import '../utils/day_utils.dart';
 
 const List<String> routineObjectives = ['Hipertrofia', 'Fuerza', 'Pérdida de grasa'];
 const List<int> routineFrequencies = [3, 4, 5];
@@ -25,9 +26,7 @@ int dayOrder(String day) {
 }
 
 List<String> templateDaysForFrequency(int frequency) {
-  if (frequency == 5) return ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-  if (frequency == 4) return ['Lunes', 'Martes', 'Jueves', 'Viernes'];
-  return ['Lunes', 'Miércoles', 'Viernes'];
+  return DayUtils.daysForFrequency(frequency);
 }
 
 Map<String, String> levelConfig(String level) {
@@ -247,7 +246,7 @@ Map<String, dynamic> buildTemplate(String objective, int frequency, String level
     final label = labels[index];
     templateDays.add({
       'day': day,
-      'dayOrder': dayOrder(day),
+      'dayOrder': DayUtils.order(day),
       'title': '$objective ${frequency}D · $label',
       'notes': 'Rutina generada automáticamente. Objetivo: $objective. Nivel: $level. Frecuencia: $frequency días.',
       'exercises': buildExercises(objective, label, level),
@@ -278,3 +277,6 @@ Map<String, dynamic>? findRoutineTemplate({
   if (!routineLevels.contains(level)) return null;
   return buildTemplate(objective, frequency, level);
 }
+
+
+

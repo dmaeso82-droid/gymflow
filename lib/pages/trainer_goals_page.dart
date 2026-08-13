@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../features/client_goals.dart';
 import '../widgets/app_card.dart';
@@ -25,7 +26,7 @@ class _TrainerGoalsPageState extends State<TrainerGoalsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Objetivos')),
+      appBar: AppBar(title: Text('Objetivos')),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
@@ -45,15 +46,15 @@ class _TrainerGoalsPageState extends State<TrainerGoalsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle(icon: Icons.person_search, title: 'Cliente'),
-                      const SizedBox(height: 12),
+                      SectionTitle(icon: Icons.person_search, title: 'Cliente'),
+                      SizedBox(height: 12),
                       if (clients.isEmpty)
-                        const Text('Primero crea un cliente.', style: TextStyle(color: Colors.white70))
+                        Text('Primero crea un cliente.', style: TextStyle(color: context.gymMutedText))
                       else
                         DropdownButtonFormField<String>(
                           value: selectedClientId,
-                          dropdownColor: const Color(0xFF0F172A),
-                          decoration: const InputDecoration(labelText: 'Cliente seleccionado', border: OutlineInputBorder()),
+                          dropdownColor: context.gymSurface,
+                          decoration: InputDecoration(labelText: 'Cliente seleccionado', border: OutlineInputBorder(borderRadius: BorderRadius.circular(16))),
                           items: clients.map((doc) {
                             final data = doc.data();
                             return DropdownMenuItem(value: doc.id, child: Text('${data['name'] ?? 'Sin nombre'} · ${data['email'] ?? 'Sin email'}'));
@@ -63,7 +64,7 @@ class _TrainerGoalsPageState extends State<TrainerGoalsPage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 if (selected != null)
                   ClientGoalsPanel(
                     gymId: widget.gymId,
@@ -78,3 +79,6 @@ class _TrainerGoalsPageState extends State<TrainerGoalsPage> {
     );
   }
 }
+
+
+

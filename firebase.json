@@ -1,1 +1,39 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"gymflow-dalai","appId":"1:1062517539608:android:da297075359b5e4641546d","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"gymflow-dalai","configurations":{"android":"1:1062517539608:android:da297075359b5e4641546d","ios":"1:1062517539608:ios:2216c5665aa3c36441546d","macos":"1:1062517539608:ios:2216c5665aa3c36441546d","web":"1:1062517539608:web:7d61e47b8ea54fa641546d","windows":"1:1062517539608:web:b4fbdbb881f9898441546d"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "gymflow-dalai",
+          "appId": "1:1062517539608:android:da297075359b5e4641546d",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "gymflow-dalai",
+          "configurations": {
+            "android": "1:1062517539608:android:da297075359b5e4641546d",
+            "ios": "1:1062517539608:ios:2216c5665aa3c36441546d",
+            "macos": "1:1062517539608:ios:2216c5665aa3c36441546d",
+            "web": "1:1062517539608:web:7d61e47b8ea54fa641546d",
+            "windows": "1:1062517539608:web:b4fbdbb881f9898441546d"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
@@ -51,8 +52,8 @@ class RecentWorkoutHistory extends StatelessWidget {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Editar registro'),
+          backgroundColor: context.gymSurface,
+          title: Text('Editar registro'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -61,7 +62,7 @@ class RecentWorkoutHistory extends StatelessWidget {
                 label: 'Peso realizado (kg)',
                 keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               AppTextField(
                 controller: repsController,
                 label: 'Repeticiones realizadas',
@@ -72,7 +73,7 @@ class RecentWorkoutHistory extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar'),
+              child: Text('Cancelar'),
             ),
             FilledButton.icon(
               onPressed: () {
@@ -88,8 +89,8 @@ class RecentWorkoutHistory extends StatelessWidget {
 
                 Navigator.pop(dialogContext, {'weight': weight, 'reps': reps});
               },
-              icon: const Icon(Icons.save),
-              label: const Text('Guardar'),
+              icon: Icon(Icons.save),
+              label: Text('Guardar'),
             ),
           ],
         );
@@ -125,19 +126,19 @@ class RecentWorkoutHistory extends StatelessWidget {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Eliminar registro'),
+          backgroundColor: context.gymSurface,
+          title: Text('Eliminar registro'),
           content: Text('¿Seguro que quieres eliminar $exercise? Esta acción no se puede deshacer.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancelar'),
+              child: Text('Cancelar'),
             ),
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Eliminar'),
+              icon: Icon(Icons.delete_outline),
+              label: Text('Eliminar'),
             ),
           ],
         );
@@ -161,7 +162,7 @@ class RecentWorkoutHistory extends StatelessWidget {
       stream: logsRef.where('userId', isEqualTo: userId).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(
+          return AppCard(
             child: Center(child: CircularProgressIndicator()),
           );
         }
@@ -180,12 +181,12 @@ class RecentWorkoutHistory extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SectionTitle(icon: Icons.history, title: 'Historial reciente'),
-              const SizedBox(height: 12),
+              SectionTitle(icon: Icons.history, title: 'Historial reciente'),
+              SizedBox(height: 12),
               if (recentLogs.isEmpty)
-                const Text(
+                Text(
                   'Todavía no hay entrenamientos registrados.',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: context.gymMutedText),
                 )
               else
                 ...recentLogs.map((doc) {
@@ -199,31 +200,31 @@ class RecentWorkoutHistory extends StatelessWidget {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF020617),
+                      color: context.gymSubtleSurface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
+                      border: Border.all(color: context.gymBorder),
                     ),
                     child: ListTile(
                       leading: Container(
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: Colors.greenAccent.withOpacity(0.12),
+                          color: context.gymPrimary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.monitor_weight, color: Colors.greenAccent),
+                        child: Icon(Icons.monitor_weight, color: context.gymPrimary),
                       ),
                       title: Text(
                         exercise,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(routineTitle, style: const TextStyle(color: Colors.white70)),
-                            const SizedBox(height: 6),
+                            Text(routineTitle, style: TextStyle(color: context.gymMutedText)),
+                            SizedBox(height: 6),
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
@@ -242,12 +243,12 @@ class RecentWorkoutHistory extends StatelessWidget {
                           IconButton(
                             tooltip: 'Editar registro',
                             onPressed: () => editWorkoutLog(context, doc),
-                            icon: const Icon(Icons.edit, color: Colors.greenAccent),
+                            icon: Icon(Icons.edit, color: context.gymPrimary),
                           ),
                           IconButton(
                             tooltip: 'Eliminar registro',
                             onPressed: () => deleteWorkoutLog(context, doc),
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                            icon: Icon(Icons.delete_outline, color: Colors.redAccent),
                           ),
                         ],
                       ),
@@ -261,3 +262,6 @@ class RecentWorkoutHistory extends StatelessWidget {
     );
   }
 }
+
+
+

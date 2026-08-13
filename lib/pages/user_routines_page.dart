@@ -1,12 +1,17 @@
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-
+import '../services/achievement_service.dart';
+import '../services/workout_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/workout_utils.dart';
 import '../widgets/app_card.dart';
-import '../widgets/app_text_field.dart';
 import '../widgets/routine_card.dart';
+import '../widgets/workout_log_dialog.dart';
+import 'routine_comments_page.dart';
 
-class UserRoutinesPage extends StatelessWidget {
+class UserRoutinesPage extends StatefulWidget {
   final String gymId;
   final String userId;
   final String userName;
@@ -20,569 +25,266 @@ class UserRoutinesPage extends StatelessWidget {
     required this.userEmail,
   });
 
-  CollectionReference<Map<String, dynamic>> get routinesRef => FirebaseFirestore.instance
-      .collection('gyms')
-      .doc(gymId)
-      .collection('routines');
+  @override
+  State<UserRoutinesPage> createState() => _UserRoutinesPageState();
+}
 
-  CollectionReference<Map<String, dynamic>> get logsRef => FirebaseFirestore.instance
-      .collection('gyms')
-      .doc(gymId)
-      .collection('workout_logs');
+class _UserRoutinesPageState extends State<UserRoutinesPage> {
+  final ScrollController _scrollController = ScrollController();
 
-  CollectionReference<Map<String, dynamic>> get communityRef => FirebaseFirestore.instance
-      .collection('gyms')
-      .doc(gymId)
-      .collection('community_posts');
+  WorkoutService get service => WorkoutService(
+        gymId: widget.gymId,
+        userId: widget.userId,
+        userName: widget.userName,
+        userEmail: widget.userEmail,
+      );
 
-  CollectionReference<Map<String, dynamic>> get challengesRef => FirebaseFirestore.instance
-      .collection('gyms')
-      .doc(gymId)
-      .collection('challenges');
-
-  static const quickWeights = <double>[
-    2.5,
-    5,
-    7.5,
-    10,
-    12.5,
-    15,
-    16,
-    17.5,
-    18,
-    20,
-    22.5,
-    25,
-    27.5,
-    30,
-    32.5,
-    35,
-    37.5,
-    40,
-    45,
-    50,
-    55,
-    60,
-    70,
-    80,
-    90,
-    100,
-  ];
-
-  static const quickReps = <int>[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30];
-
-  bool isActiveRoutine(Map<String, dynamic> data) {
-    return (data['status'] ?? 'active').toString() != 'archived';
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
-  int intValue(dynamic value, {int fallback = 0}) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    final text = value?.toString() ?? '';
-    final match = RegExp(r'\d+').firstMatch(text);
-    return int.tryParse(match?.group(0) ?? '') ?? fallback;
+  double get _currentScrollOffset {
+    if (!_scrollController.hasClients) return 0;
+    return _scrollController.offset;
   }
 
-  double? decimalValue(String value) {
-    final normalized = value.trim().replaceAll(',', '.');
-    if (normalized.isEmpty) return null;
-    return double.tryParse(normalized);
-  }
-
-  String formatWeight(double value) {
-    if (value == value.roundToDouble()) return value.round().toString();
-    return value.toStringAsFixed(1).replaceAll('.', ',');
-  }
-
-  int totalSets(Map<String, dynamic> exercise) {
-    final parsed = intValue(exercise['sets'], fallback: 1);
-    return parsed <= 0 ? 1 : parsed;
-  }
-
-  int completedSets(Map<String, dynamic> exercise) {
-    final total = totalSets(exercise);
-    final rawCompleted = intValue(exercise['completedSets'], fallback: -1);
-
-    if (rawCompleted >= 0) {
-      return rawCompleted.clamp(0, total).toInt();
-    }
-
-    if (exercise['done'] == true) return total;
-    return 0;
-  }
-
-  int routineDayOrder(String day) {
-    switch (day) {
-      case 'Lunes':
-        return 1;
-      case 'Martes':
-        return 2;
-      case 'Miércoles':
-        return 3;
-      case 'Jueves':
-        return 4;
-      case 'Viernes':
-        return 5;
-      case 'Sábado':
-        return 6;
-      case 'Domingo':
-        return 7;
-      default:
-        return 99;
-    }
-  }
-
-  Future<void> saveWorkoutLog({
-    required String routineId,
-    required String routineTitle,
-    required Map<String, dynamic> exercise,
-    required double weight,
-    required int reps,
-    required int setNumber,
-    required int plannedSetCount,
-  }) async {
-    await logsRef.add({
-      'userId': userId,
-      'userName': userName,
-      'userEmail': userEmail.toLowerCase(),
-      'routineId': routineId,
-      'routineTitle': routineTitle,
-      'exerciseId': exercise['id'] ?? '',
-      'exercise': exercise['name'] ?? 'Ejercicio',
-      'plannedSets': exercise['sets'] ?? '',
-      'plannedReps': exercise['reps'] ?? '',
-      'plannedWeight': exercise['weight'] ?? '',
-      'setNumber': setNumber,
-      'plannedSetCount': plannedSetCount,
-      'weight': weight,
-      'reps': reps,
-      'createdAt': FieldValue.serverTimestamp(),
+  void _restoreScrollOffset(double offset) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      final target = offset.clamp(0.0, max).toDouble();
+      _scrollController.jumpTo(target);
     });
   }
 
-  Future<void> publishCompletedRoutinePost({
-    required String routineId,
-    required String routineTitle,
-    required int totalCompletedSets,
-    required int totalPlannedSets,
-    required int totalExercises,
-  }) async {
-    await communityRef.add({
-      'type': 'workout_completed',
-      'userId': userId,
-      'userName': userName,
-      'userEmail': userEmail.toLowerCase(),
-      'title': 'Entrenamiento completado',
-      'message': '$userName ha completado una rutina en DalaiGym.',
-      'routineId': routineId,
-      'routineTitle': routineTitle,
-      'totalSets': totalCompletedSets,
-      'plannedSets': totalPlannedSets,
-      'totalExercises': totalExercises,
-      'likes': [],
-      'commentsCount': 0,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+  Future<void> _restoreScrollOffsetAfterRefresh(double offset) async {
+    _restoreScrollOffset(offset);
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    _restoreScrollOffset(offset);
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    _restoreScrollOffset(offset);
   }
 
-  Future<void> askToShareCompletedRoutine(
-    BuildContext context, {
-    required String routineId,
-    required String routineTitle,
-    required int totalCompletedSets,
-    required int totalPlannedSets,
-    required int totalExercises,
+  Future<void> showUnlockedAchievementDialog({
+    required BuildContext context,
+    required WorkoutService workoutService,
+    required UnlockedAchievementData achievement,
   }) async {
-    final share = await showDialog<bool>(
+    final action = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Rutina completada'),
-          content: Text(
-            'Has completado "$routineTitle". ¿Quieres compartirlo con la comunidad de DalaiGym?',
+          backgroundColor: context.gymSurface,
+          title: Row(
+            children: [
+              Icon(Icons.emoji_events, color: Colors.amberAccent),
+              SizedBox(width: 8),
+              Expanded(child: Text('Logro desbloqueado')),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                achievement.title,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.amberAccent),
+              ),
+              SizedBox(height: 8),
+              Text(achievement.description, style: TextStyle(color: context.gymMutedText)),
+              SizedBox(height: 12),
+              Text('¿Quieres compartirlo en Comunidad?', style: TextStyle(color: context.gymMutedText)),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('No compartir'),
+              onPressed: () => Navigator.pop(dialogContext, 'close'),
+              child: Text('Cerrar'),
             ),
             FilledButton.icon(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.groups),
-              label: const Text('Compartir'),
+              onPressed: () => Navigator.pop(dialogContext, 'share'),
+              icon: Icon(Icons.share),
+              label: Text('Compartir'),
             ),
           ],
         );
       },
     );
 
-    if (share != true) return;
-    await publishCompletedRoutinePost(
-      routineId: routineId,
-      routineTitle: routineTitle,
-      totalCompletedSets: totalCompletedSets,
-      totalPlannedSets: totalPlannedSets,
-      totalExercises: totalExercises,
-    );
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entrenamiento compartido en la comunidad.')),
-      );
-    }
-  }
-
-  Future<void> updateWorkoutChallenges({
-    required String routineTitle,
-  }) async {
-    final activeChallenges = await challengesRef
-        .where('active', isEqualTo: true)
-        .where('type', isEqualTo: 'workout_count')
-        .get();
-
-    for (final challenge in activeChallenges.docs) {
-      final data = challenge.data();
-      final target = intValue(data['target'], fallback: 0);
-      if (target <= 0) continue;
-
-      final progressRef = challenge.reference.collection('progress').doc(userId);
-      final progressSnapshot = await progressRef.get();
-      final progressData = progressSnapshot.data();
-      final alreadyCompleted = progressData?['completed'] == true;
-      if (alreadyCompleted) continue;
-
-      final currentCount = intValue(progressData?['count'], fallback: 0);
-      final nextCount = currentCount + 1;
-      final completed = nextCount >= target;
-
-      await progressRef.set({
-        'userId': userId,
-        'userName': userName,
-        'userEmail': userEmail.toLowerCase(),
-        'count': nextCount,
-        'target': target,
-        'completed': completed,
-        'lastRoutineTitle': routineTitle,
-        'updatedAt': FieldValue.serverTimestamp(),
-        if (!progressSnapshot.exists) 'createdAt': FieldValue.serverTimestamp(),
-        if (completed) 'completedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      if (completed) {
-        final title = data['title']?.toString() ?? 'Reto';
-        await communityRef.add({
-          'type': 'challenge_completed',
-          'userId': userId,
-          'userName': userName,
-          'userEmail': userEmail.toLowerCase(),
-          'title': 'Reto completado',
-          'message': '$userName ha completado el reto "$title" en DalaiGym.',
-          'challengeId': challenge.id,
-          'challengeTitle': title,
-          'routineTitle': routineTitle,
-          'totalSets': nextCount,
-          'plannedSets': target,
-          'likes': [],
-          'commentsCount': 0,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+    if (action == 'share') {
+      await workoutService.shareAchievementToCommunity(achievement);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Logro compartido en Comunidad.')));
       }
     }
   }
 
-  Future<void> showWorkoutLogDialog(
-    BuildContext context,
-    String routineId,
-    String routineTitle,
-    List<dynamic> exercises,
-    String exerciseId,
-  ) async {
-    final exercise = exercises
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .firstWhere((item) => item['id'] == exerciseId);
-
-    final plannedSetCount = totalSets(exercise);
-    final currentCompletedSets = completedSets(exercise);
-
-    if (currentCompletedSets >= plannedSetCount) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este ejercicio ya tiene todas las series registradas.')),
+  Future<void> showUnlockedAchievements({
+    required BuildContext context,
+    required WorkoutService workoutService,
+    required List<UnlockedAchievementData> achievements,
+  }) async {
+    for (final achievement in achievements) {
+      if (!context.mounted) return;
+      await showUnlockedAchievementDialog(
+        context: context,
+        workoutService: workoutService,
+        achievement: achievement,
       );
+    }
+  }
+
+  Future<void> logWorkoutSet({
+    required BuildContext context,
+    required String routineId,
+    required String routineTitle,
+    required List<dynamic> exercises,
+    required String exerciseId,
+  }) async {
+    final savedScrollOffset = _currentScrollOffset;
+    final workoutService = service;
+    final result = await showWorkoutLogDialog(
+      context: context,
+      exercises: exercises,
+      exerciseId: exerciseId,
+    );
+    if (result == null || !context.mounted) {
+      await _restoreScrollOffsetAfterRefresh(savedScrollOffset);
       return;
     }
 
-    final nextSetNumber = currentCompletedSets + 1;
-    final weightText = (exercise['weight'] ?? '').toString();
-    final repsText = (exercise['reps'] ?? '').toString();
-    final suggestedWeightRaw = RegExp(r'\d+(?:[\.,]\d+)?').firstMatch(weightText)?.group(0) ?? '';
-    final suggestedWeight = suggestedWeightRaw.replaceAll('.', ',');
-    final suggestedReps = RegExp(r'\d+').firstMatch(repsText)?.group(0) ?? '';
-
-    final weightController = TextEditingController(text: suggestedWeight);
-    final repsController = TextEditingController(text: suggestedReps);
-
-
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: const Color(0xFF0F172A),
-              title: Text('Registrar ${exercise['name'] ?? 'ejercicio'} ($nextSetNumber/$plannedSetCount)'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Pesos rápidos',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: quickWeights.map((weight) {
-                          final text = formatWeight(weight);
-                          final selected = weightController.text.trim() == text;
-                          return ChoiceChip(
-                            label: Text('$text kg'),
-                            selected: selected,
-                            selectedColor: Colors.greenAccent.withOpacity(0.22),
-                            backgroundColor: const Color(0xFF020617),
-                            labelStyle: TextStyle(
-                              color: selected ? Colors.greenAccent : Colors.white70,
-                              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                            ),
-                            side: BorderSide(color: selected ? Colors.greenAccent : Colors.white12),
-                            onSelected: (_) {
-                              setDialogState(() {
-                                weightController.text = text;
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    AppTextField(
-                      controller: weightController,
-                      label: 'Peso realizado (kg)',
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Repeticiones rápidas',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: quickReps.map((reps) {
-                          final text = reps.toString();
-                          final selected = repsController.text.trim() == text;
-                          return ChoiceChip(
-                            label: Text(text),
-                            selected: selected,
-                            selectedColor: Colors.greenAccent.withOpacity(0.22),
-                            backgroundColor: const Color(0xFF020617),
-                            labelStyle: TextStyle(
-                              color: selected ? Colors.greenAccent : Colors.white70,
-                              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                            ),
-                            side: BorderSide(color: selected ? Colors.greenAccent : Colors.white12),
-                            onSelected: (_) {
-                              setDialogState(() {
-                                repsController.text = text;
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    AppTextField(
-                      controller: repsController,
-                      label: 'Repeticiones realizadas',
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Puedes usar los chips rápidos o escribir manualmente. Se aceptan pesos con coma o punto, por ejemplo 17,5 o 17.5.',
-                      style: TextStyle(color: Colors.white60, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton.icon(
-                  onPressed: () {
-                    final weight = decimalValue(weightController.text);
-                    final reps = int.tryParse(repsController.text.trim());
-
-                    if (weight == null || reps == null || weight < 0 || reps <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Introduce peso y repeticiones válidas.')),
-                      );
-                      return;
-                    }
-
-                    Navigator.pop(dialogContext, {'weight': weight, 'reps': reps});
-                  },
-                  icon: const Icon(Icons.save),
-                  label: Text('Guardar serie $nextSetNumber/$plannedSetCount'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    weightController.dispose();
-    repsController.dispose();
-
-    if (result == null) return;
-
-    await saveWorkoutLog(
+    final newAchievements = await workoutService.saveWorkoutLog(
       routineId: routineId,
       routineTitle: routineTitle,
-      exercise: exercise,
-      weight: result['weight'] as double,
-      reps: result['reps'] as int,
-      setNumber: nextSetNumber,
-      plannedSetCount: plannedSetCount,
+      exercise: result.exercise,
+      weight: result.weight,
+      reps: result.reps,
+      setNumber: result.setNumber,
+      plannedSetCount: result.plannedSetCount,
     );
+    if (!context.mounted) return;
 
-    final progress = await updateExerciseSetProgress(routineId, exercises, exerciseId);
+    final progress = await workoutService.updateExerciseSetProgress(
+      routineId,
+      exercises,
+      exerciseId,
+    );
+    if (!context.mounted) return;
 
-    if (context.mounted) {
-      final completedMessage = nextSetNumber >= plannedSetCount
-          ? 'Ejercicio completado. Has registrado $plannedSetCount/$plannedSetCount series.'
-          : 'Serie guardada. Llevas $nextSetNumber/$plannedSetCount series.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(completedMessage)),
-      );
+    await _restoreScrollOffsetAfterRefresh(savedScrollOffset);
+
+    var allNewAchievements = List<UnlockedAchievementData>.from(newAchievements);
+    if (progress.routineCompleted) {
+      final challengeAchievements = await workoutService.updateWorkoutChallenges(routineTitle: routineTitle);
+      allNewAchievements = [...allNewAchievements, ...challengeAchievements];
     }
+    if (!context.mounted) return;
 
-    if (progress['routineCompleted'] == true && context.mounted) {
-      await updateWorkoutChallenges(routineTitle: routineTitle);
-      await askToShareCompletedRoutine(
-        context,
-        routineId: routineId,
-        routineTitle: routineTitle,
-        totalCompletedSets: progress['totalCompletedSets'] as int,
-        totalPlannedSets: progress['totalPlannedSets'] as int,
-        totalExercises: progress['totalExercises'] as int,
+    final completedMessage = result.setNumber >= result.plannedSetCount
+        ? 'Ejercicio completado. Has registrado ${result.plannedSetCount}/${result.plannedSetCount} series.'
+        : 'Serie guardada. Llevas ${result.setNumber}/${result.plannedSetCount} series.';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(completedMessage)));
+
+    if (allNewAchievements.isNotEmpty && context.mounted) {
+      final unique = <String, UnlockedAchievementData>{};
+      for (final achievement in allNewAchievements) {
+        unique[achievement.id] = achievement;
+      }
+      await showUnlockedAchievements(
+        context: context,
+        workoutService: workoutService,
+        achievements: unique.values.toList(),
       );
     }
   }
 
-  Future<Map<String, dynamic>> updateExerciseSetProgress(String routineId, List<dynamic> exercises, String exerciseId) async {
-    int totalCompletedSets = 0;
-    int totalPlannedSets = 0;
-    int totalExercises = 0;
+  Future<void> updateExerciseDone(
+    String routineId,
+    List<dynamic> exercises,
+    String exerciseId,
+    bool done,
+  ) async {
+    final savedScrollOffset = _currentScrollOffset;
+    await service.updateExerciseDone(routineId, exercises, exerciseId, done);
+    await _restoreScrollOffsetAfterRefresh(savedScrollOffset);
+  }
 
-    final updated = exercises.map((item) {
-      final map = Map<String, dynamic>.from(item as Map);
-      final plannedSetCount = totalSets(map);
-      var completed = completedSets(map);
-      if (map['id'] == exerciseId) {
-        completed = (completed + 1).clamp(0, plannedSetCount).toInt();
-        map['completedSets'] = completed;
-        map['done'] = completed >= plannedSetCount;
-      }
-      totalExercises += 1;
-      totalPlannedSets += plannedSetCount;
-      totalCompletedSets += completed.clamp(0, plannedSetCount).toInt();
-      return map;
-    }).toList();
-
-    final routineCompleted = totalPlannedSets > 0 && totalCompletedSets >= totalPlannedSets;
-
-    await routinesRef.doc(routineId).update({
-      'exercises': updated,
-      'completedSets': totalCompletedSets,
-      'totalSets': totalPlannedSets,
-      'done': routineCompleted,
-      'updatedAt': FieldValue.serverTimestamp(),
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> sortRoutines(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> routines,
+  ) {
+    final sorted = [...routines];
+    sorted.sort((a, b) {
+      final aOrder = a.data()['dayOrder'] is int
+          ? a.data()['dayOrder'] as int
+          : routineDayOrder((a.data()['day'] ?? '').toString());
+      final bOrder = b.data()['dayOrder'] is int
+          ? b.data()['dayOrder'] as int
+          : routineDayOrder((b.data()['day'] ?? '').toString());
+      final orderCompare = aOrder.compareTo(bOrder);
+      if (orderCompare != 0) return orderCompare;
+      return (a.data()['title'] ?? '').toString().compareTo((b.data()['title'] ?? '').toString());
     });
-
-    return {
-      'routineCompleted': routineCompleted,
-      'totalCompletedSets': totalCompletedSets,
-      'totalPlannedSets': totalPlannedSets,
-      'totalExercises': totalExercises,
-    };
-  }
-
-  Future<void> updateExerciseDone(String routineId, List<dynamic> exercises, String exerciseId, bool done) async {
-    final updated = exercises.map((item) {
-      final map = Map<String, dynamic>.from(item as Map);
-      if (map['id'] == exerciseId) {
-        final plannedSetCount = totalSets(map);
-        map['done'] = done;
-        map['completedSets'] = done ? plannedSetCount : 0;
-      }
-      return map;
-    }).toList();
-
-    await routinesRef.doc(routineId).update({'exercises': updated});
+    return sorted;
   }
 
   @override
   Widget build(BuildContext context) {
+    final workoutService = service;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis rutinas')),
+      appBar: AppBar(title: Text('Mis rutinas')),
       body: SafeArea(
         child: ListView(
+          key: const PageStorageKey<String>('user_routines_scroll_position'),
+          controller: _scrollController,
           padding: const EdgeInsets.all(16),
           children: [
-            AppCard(
-              child: Text(
-                'Mostrando solo rutinas activas asignadas a: $userEmail',
-                style: const TextStyle(color: Colors.white70),
-              ),
-            ),
-            const SizedBox(height: 16),
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: routinesRef.where('clientEmail', isEqualTo: userEmail.toLowerCase()).snapshots(),
+              stream: workoutService.routinesRef.where('clientEmail', isEqualTo: widget.userEmail.toLowerCase()).snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError) {
+                  return AppCard(
+                    child: Column(
+                      children: [
+                        Icon(Icons.wifi_off_rounded, color: Colors.orangeAccent, size: 42),
+                        SizedBox(height: 12),
+                        Text(
+                          'No se han podido cargar tus rutinas.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Vuelve a intentarlo. Si estabas cambiando entre apps, esto evita que la pantalla se quede en negro.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: context.gymMutedText),
+                        ),
+                        SizedBox(height: 14),
+                        FilledButton.icon(
+                          onPressed: () {
+                            if (mounted) setState(() {});
+                          },
+                          icon: Icon(Icons.refresh),
+                          label: Text('Reintentar'),
+                        ),
+                      ],
+                    ),
+                  );
                 }
 
-                final routines = (snapshot.data?.docs ?? [])
-                    .where((doc) => isActiveRoutine(doc.data()))
-                    .toList();
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  return Center(child: CircularProgressIndicator());
+                }
 
-                routines.sort((a, b) {
-                  final aOrder = a.data()['dayOrder'] is int
-                      ? a.data()['dayOrder'] as int
-                      : routineDayOrder((a.data()['day'] ?? '').toString());
-                  final bOrder = b.data()['dayOrder'] is int
-                      ? b.data()['dayOrder'] as int
-                      : routineDayOrder((b.data()['day'] ?? '').toString());
-                  final orderCompare = aOrder.compareTo(bOrder);
-                  if (orderCompare != 0) return orderCompare;
-                  return (a.data()['title'] ?? '').toString().compareTo((b.data()['title'] ?? '').toString());
-                });
+                final routines = sortRoutines(
+                  (snapshot.data?.docs ?? [])
+                      .where((doc) => workoutService.isActiveRoutine(doc.data()))
+                      .toList(),
+                );
 
                 if (routines.isEmpty) {
-                  return const AppCard(
+                  return AppCard(
                     child: Center(
                       child: Text(
                         'Todavía no tienes rutinas activas asignadas.',
@@ -592,28 +294,15 @@ class UserRoutinesPage extends StatelessWidget {
                   );
                 }
 
-                return Column(
-                  children: routines.map((doc) {
-                    final data = doc.data();
-                    final exercises = List<dynamic>.from(data['exercises'] ?? []);
 
-                    return RoutineCard(
-                      title: data['title'] ?? 'Sin título',
-                      day: data['day'] ?? 'Sin día',
-                      notes: data['notes'] ?? '',
-                      clientName: 'Mi rutina',
-                      exercises: exercises,
-                      trainerMode: false,
-                      onToggleExercise: (exerciseId, done) => updateExerciseDone(doc.id, exercises, exerciseId, done),
-                      onLogWorkout: (exerciseId) => showWorkoutLogDialog(
-                        context,
-                        doc.id,
-                        data['title'] ?? 'Sin título',
-                        exercises,
-                        exerciseId,
-                      ),
-                    );
-                  }).toList(),
+                return _RoutineList(
+                  gymId: widget.gymId,
+                  userId: widget.userId,
+                  userName: widget.userName,
+                  userEmail: widget.userEmail,
+                  routines: routines,
+                  onToggleExercise: updateExerciseDone,
+                  onLogWorkout: logWorkoutSet,
                 );
               },
             ),
@@ -623,3 +312,74 @@ class UserRoutinesPage extends StatelessWidget {
     );
   }
 }
+
+class _RoutineList extends StatelessWidget {
+  final String gymId;
+  final String userId;
+  final String userName;
+  final String userEmail;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> routines;
+  final Future<void> Function(String routineId, List<dynamic> exercises, String exerciseId, bool done) onToggleExercise;
+  final Future<void> Function({
+    required BuildContext context,
+    required String routineId,
+    required String routineTitle,
+    required List<dynamic> exercises,
+    required String exerciseId,
+  }) onLogWorkout;
+
+  const _RoutineList({
+    required this.gymId,
+    required this.userId,
+    required this.userName,
+    required this.userEmail,
+    required this.routines,
+    required this.onToggleExercise,
+    required this.onLogWorkout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: routines.map((doc) {
+        final data = doc.data();
+        final exercises = List<dynamic>.from(data['exercises'] ?? []);
+        final routineTitle = data['title'] ?? 'Sin título';
+        return RoutineCard(
+          key: ValueKey('routine-card-${doc.id}'),
+          title: routineTitle,
+          day: data['day'] ?? 'Sin día',
+          notes: data['notes'] ?? '',
+          clientName: 'Mi rutina',
+          exercises: exercises,
+          trainerMode: false,
+          commentsCount: workoutIntValue(data['commentsCount']),
+          onOpenComments: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => RoutineCommentsPage(
+                gymId: gymId,
+                routineId: doc.id,
+                routineTitle: routineTitle,
+                currentUserId: userId,
+                currentUserName: userName,
+                currentUserEmail: userEmail,
+              ),
+            ),
+          ),
+          onToggleExercise: (exerciseId, done) => onToggleExercise(doc.id, exercises, exerciseId, done),
+          onLogWorkout: (exerciseId) => onLogWorkout(
+            context: context,
+            routineId: doc.id,
+            routineTitle: routineTitle,
+            exercises: exercises,
+            exerciseId: exerciseId,
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+
+

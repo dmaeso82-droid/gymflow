@@ -3,13 +3,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../constants.dart';
 import '../firebase_options.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/profile_avatar.dart';
-import '../widgets/section_title.dart';
 
 class TrainerTrainersPage extends StatefulWidget {
   final String gymId;
@@ -92,26 +92,26 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF0F172A),
-              title: const Text('Nuevo entrenador'),
+              backgroundColor: context.gymSurface,
+              title: Text('Nuevo entrenador'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     AppTextField(controller: nameController, label: 'Nombre'),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     AppTextField(
                       controller: emailController,
                       label: 'Email',
                       keyboardType: TextInputType.emailAddress,
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: selectedRole,
-                      dropdownColor: const Color(0xFF0F172A),
-                      decoration: const InputDecoration(
+                      initialValue: selectedRole,
+                      dropdownColor: context.gymSurface,
+                      decoration: InputDecoration(
                         labelText: 'Rol',
-                        border: OutlineInputBorder(),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                       items: const [
                         DropdownMenuItem(value: 'trainer', child: Text('Entrenador')),
@@ -122,16 +122,16 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                         setDialogState(() => selectedRole = value);
                       },
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
+                    SizedBox(height: 12),
+                    Text(
                       'Se creará una cuenta de acceso y se enviará un email para establecer la contraseña.',
-                      style: TextStyle(color: Colors.white70),
+                      style: TextStyle(color: context.gymMutedText),
                     ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text('Cancelar')),
                 FilledButton.icon(
                   onPressed: () {
                     final name = nameController.text.trim();
@@ -148,8 +148,8 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                       'trainerRole': selectedRole,
                     });
                   },
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('Crear entrenador'),
+                  icon: Icon(Icons.person_add),
+                  label: Text('Crear entrenador'),
                 ),
               ],
             );
@@ -256,17 +256,17 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF0F172A),
-              title: const Text('Editar entrenador'),
+              backgroundColor: context.gymSurface,
+              title: Text('Editar entrenador'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   AppTextField(controller: nameController, label: 'Nombre'),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: selectedRole,
-                    dropdownColor: const Color(0xFF0F172A),
-                    decoration: const InputDecoration(labelText: 'Rol', border: OutlineInputBorder()),
+                    initialValue: selectedRole,
+                    dropdownColor: context.gymSurface,
+                    decoration: InputDecoration(labelText: 'Rol', border: OutlineInputBorder(borderRadius: BorderRadius.circular(16))),
                     items: const [
                       DropdownMenuItem(value: 'trainer', child: Text('Entrenador')),
                       DropdownMenuItem(value: 'gym_admin', child: Text('Admin gimnasio')),
@@ -279,15 +279,15 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text('Cancelar')),
                 FilledButton.icon(
                   onPressed: () {
                     final name = nameController.text.trim();
                     if (name.isEmpty) return;
                     Navigator.pop(dialogContext, {'name': name, 'trainerRole': selectedRole});
                   },
-                  icon: const Icon(Icons.save),
-                  label: const Text('Guardar'),
+                  icon: Icon(Icons.save),
+                  label: Text('Guardar'),
                 ),
               ],
             );
@@ -360,17 +360,17 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
     final avatarSize = isCompact ? 42.0 : 56.0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Entrenadores')),
+      appBar: AppBar(title: Text('Entrenadores')),
       floatingActionButton: canManage
           ? isCompact
               ? FloatingActionButton(
                   onPressed: createTrainer,
-                  child: const Icon(Icons.person_add),
+                  child: Icon(Icons.person_add),
                 )
               : FloatingActionButton.extended(
                   onPressed: createTrainer,
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('Nuevo entrenador'),
+                  icon: Icon(Icons.person_add),
+                  label: Text('Nuevo entrenador'),
                 )
           : null,
       body: SafeArea(
@@ -378,7 +378,7 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
           stream: trainersRef.orderBy('createdAt', descending: true).snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return Center(child: CircularProgressIndicator());
             }
             final trainers = snapshot.data?.docs ?? [];
             return ListView(
@@ -390,8 +390,8 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.groups, color: Colors.greenAccent, size: 20),
-                          const SizedBox(width: 8),
+                          Icon(Icons.groups, color: context.gymPrimary, size: 20),
+                          SizedBox(width: 8),
                           Text(
                             'Equipo de entrenadores',
                             style: TextStyle(fontSize: isCompact ? 16 : 18, fontWeight: FontWeight.w900),
@@ -407,17 +407,17 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                             : isCompact
                                 ? 'Equipo del gimnasio.'
                                 : 'Puedes ver el equipo de entrenadores. Solo un admin de gimnasio puede crear o editar entrenadores.',
-                        style: TextStyle(color: Colors.white70, fontSize: isCompact ? 13 : 14),
+                        style: TextStyle(color: context.gymMutedText, fontSize: isCompact ? 13 : 14),
                       ),
                     ],
                   ),
                 ),
                 SizedBox(height: isCompact ? 10 : 16),
                 if (trainers.isEmpty)
-                  const AppCard(
+                  AppCard(
                     child: Text(
                       'Todavía no hay entrenadores registrados en este gimnasio.',
-                      style: TextStyle(color: Colors.white70),
+                      style: TextStyle(color: context.gymMutedText),
                     ),
                   )
                 else
@@ -450,7 +450,7 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                                   email,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Colors.white60, fontSize: isCompact ? 12 : 14),
+                                  style: TextStyle(color: context.gymMutedText, fontSize: isCompact ? 12 : 14),
                                 ),
                                 SizedBox(height: isCompact ? 6 : 8),
                                 Wrap(
@@ -463,7 +463,7 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                                         vertical: isCompact ? 4 : 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.greenAccent.withOpacity(0.14),
+                                        color: context.gymPrimary.withValues(alpha: 0.14),
                                         borderRadius: BorderRadius.circular(999),
                                       ),
                                       child: Text(
@@ -478,8 +478,8 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: active
-                                            ? Colors.greenAccent.withOpacity(0.14)
-                                            : Colors.redAccent.withOpacity(0.14),
+                                            ? context.gymPrimary.withValues(alpha: 0.14)
+                                            : Colors.redAccent.withValues(alpha: 0.14),
                                         borderRadius: BorderRadius.circular(999),
                                       ),
                                       child: Text(
@@ -520,3 +520,5 @@ class _TrainerTrainersPageState extends State<TrainerTrainersPage> {
   }
 
 }
+
+

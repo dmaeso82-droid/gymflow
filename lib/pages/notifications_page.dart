@@ -1,8 +1,9 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
+import '../services/notification_service.dart';
 import '../widgets/app_card.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -16,6 +17,11 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   String selectedFilter = 'all';
+
+  NotificationService get notificationService => NotificationService(gymId: widget.gymId);
+
+  String get currentUserId => FirebaseAuth.instance.currentUser?.uid ?? '';
+  String get currentUserEmail => (FirebaseAuth.instance.currentUser?.email ?? '').toLowerCase();
 
   DocumentReference<Map<String, dynamic>> get readRef {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
@@ -31,6 +37,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
       .doc(widget.gymId)
       .collection('activity');
 
+  CollectionReference<Map<String, dynamic>> get notificationsRef => FirebaseFirestore.instance
+      .collection('gyms')
+      .doc(widget.gymId)
+      .collection('notifications');
+
   @override
   void initState() {
     super.initState();
@@ -42,22 +53,26 @@ class _NotificationsPageState extends State<NotificationsPage> {
       'lastReadAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    await notificationService.markAllAsRead(
+      userId: currentUserId,
+      userEmail: currentUserEmail,
+    );
   }
 
   String activityGroup(String type) {
-    if (type.startsWith('client_')) return 'clients';
-    if (type.startsWith('routine_')) return 'routines';
-    if (type.startsWith('template_')) return 'templates';
+    if (type.startsWith('client_')) return 'activity';
+    if (type.startsWith('routine_')) return 'activity';
+    if (type.startsWith('template_')) return 'activity';
     if (type.startsWith('measurement_')) return 'measurements';
     if (type.startsWith('goal_')) return 'goals';
-    return 'other';
+    return 'activity';
   }
 
   String activityTitle(Map<String, dynamic> data) {
     final type = data['type']?.toString() ?? '';
     final user = data['user']?.toString() ?? 'Alguien';
     final target = data['target']?.toString() ?? 'un elemento';
-
     switch (type) {
       case 'client_created':
         return '$user creó el cliente $target';
@@ -129,142 +144,155 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return Icons.notifications;
   }
 
-  String formatDate(dynamic value) {
-    if (value is Timestamp) {
-      final date = value.toDate();
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      final year = date.year.toString();
-      final hour = date.hour.toString().padLeft(2, '0');
-      final minute = date.minute.toString().padLeft(2, '0');
-      return '$day/$month/$year · $hour:$minute';
-    }
-    return 'Fecha pendiente';
+  Color activityColor(BuildContext context, String type) {
+    if (type.startsWith('measurement_')) return Colors.lightBlueAccent;
+    if (type.startsWith('goal_')) return context.gymPrimary;
+    return context.gymPrimary;
   }
 
   List<Map<String, String>> get filters => const [
-        {'id': 'all', 'label': 'Todos'},
-        {'id': 'clients', 'label': 'Clientes'},
-        {'id': 'routines', 'label': 'Rutinas'},
-        {'id': 'templates', 'label': 'Plantillas'},
+        {'id': 'all', 'label': 'Todo'},
+        {'id': 'activity', 'label': 'Actividad'},
+        {'id': 'messages', 'label': 'Mensajes'},
+        {'id': 'challenges', 'label': 'Retos'},
+        {'id': 'rankings', 'label': 'Ranking'},
+        {'id': 'community', 'label': 'Comunidad'},
         {'id': 'goals', 'label': 'Objetivos'},
         {'id': 'measurements', 'label': 'Medidas'},
       ];
+
+  List<NotificationItem> buildItems({
+    required BuildContext context,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> notificationDocs,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> activityDocs,
+  }) {
+    final items = <NotificationItem>[];
+
+    for (final doc in notificationDocs) {
+      final data = doc.data();
+      if (!notificationService.isForCurrentUser(data, currentUserId, currentUserEmail)) continue;
+      final type = data['type']?.toString() ?? 'notification';
+      items.add(NotificationItem(
+        group: notificationService.groupForType(type),
+        title: data['title']?.toString() ?? 'Notificación',
+        message: data['message']?.toString() ?? '',
+        dateText: notificationService.formatDate(data['createdAt']),
+        createdAt: data['createdAt'],
+        icon: notificationService.iconForType(type),
+        color: notificationService.colorForType(type),
+        read: data['read'] == true,
+      ));
+    }
+
+    for (final doc in activityDocs) {
+      final data = doc.data();
+      final type = data['type']?.toString() ?? '';
+      items.add(NotificationItem(
+        group: activityGroup(type),
+        title: activityTitle(data),
+        message: 'Movimiento registrado en DalaiGym',
+        dateText: notificationService.formatDate(data['createdAt']),
+        createdAt: data['createdAt'],
+        icon: activityIcon(type),
+        color: activityColor(context, type),
+        read: true,
+      ));
+    }
+
+    items.sort((a, b) {
+      final aDate = a.createdAt;
+      final bDate = b.createdAt;
+      final aMs = aDate is Timestamp ? aDate.millisecondsSinceEpoch : 0;
+      final bMs = bDate is Timestamp ? bDate.millisecondsSinceEpoch : 0;
+      return bMs.compareTo(aMs);
+    });
+
+    if (selectedFilter == 'all') return items;
+    return items.where((item) => item.group == selectedFilter).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notificaciones'),
+        title: Text('Notificaciones'),
         actions: [
           TextButton.icon(
             onPressed: markAllAsRead,
-            icon: const Icon(Icons.done_all),
-            label: const Text('Marcar leído'),
+            icon: Icon(Icons.done_all),
+            label: Text('Marcar leído'),
           ),
         ],
       ),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: activityRef.orderBy('createdAt', descending: true).limit(80).snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+          stream: notificationsRef.orderBy('createdAt', descending: true).limit(80).snapshots(),
+          builder: (context, notificationSnapshot) {
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: activityRef.orderBy('createdAt', descending: true).limit(80).snapshots(),
+              builder: (context, activitySnapshot) {
+                if (notificationSnapshot.connectionState == ConnectionState.waiting ||
+                    activitySnapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator());
+                }
 
-            final activityDocs = snapshot.data?.docs ?? [];
-            final filteredDocs = selectedFilter == 'all'
-                ? activityDocs
-                : activityDocs.where((doc) {
-                    final type = doc.data()['type']?.toString() ?? '';
-                    return activityGroup(type) == selectedFilter;
-                  }).toList();
+                final items = buildItems(
+                  context: context,
+                  notificationDocs: notificationSnapshot.data?.docs ?? [],
+                  activityDocs: activitySnapshot.data?.docs ?? [],
+                );
 
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                AppCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.notifications, color: Colors.greenAccent),
-                          SizedBox(width: 8),
+                          Row(
+                            children: [
+                              Icon(Icons.notifications, color: context.gymPrimary),
+                              SizedBox(width: 8),
+                              Text(
+                                'Centro de notificaciones',
+                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 8),
                           Text(
-                            'Centro de notificaciones',
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                            'Mensajes, retos, comunidad y últimos movimientos del gimnasio.',
+                            style: TextStyle(color: context.gymMutedText),
+                          ),
+                          SizedBox(height: 14),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: filters.map((filter) {
+                              final selected = selectedFilter == filter['id'];
+                              return ChoiceChip(
+                                label: Text(filter['label']!),
+                                selected: selected,
+                                onSelected: (_) => setState(() => selectedFilter = filter['id']!),
+                              );
+                            }).toList(),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Últimos movimientos del gimnasio registrados por entrenadores.',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                      const SizedBox(height: 14),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: filters.map((filter) {
-                          final selected = selectedFilter == filter['id'];
-                          return ChoiceChip(
-                            label: Text(filter['label']!),
-                            selected: selected,
-                            onSelected: (_) => setState(() => selectedFilter = filter['id']!),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (filteredDocs.isEmpty)
-                  const AppCard(
-                    child: Text(
-                      'No hay notificaciones para este filtro.',
-                      style: TextStyle(color: Colors.white70),
                     ),
-                  )
-                else
-                  ...filteredDocs.map((doc) {
-                    final data = doc.data();
-                    final type = data['type']?.toString() ?? '';
-                    final title = activityTitle(data);
-                    final dateText = formatDate(data['createdAt']);
-
-                    return AppCard(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: Colors.greenAccent.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Icon(activityIcon(type), color: Colors.greenAccent, size: 22),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  style: const TextStyle(fontWeight: FontWeight.w900),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(dateText, style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-              ],
+                    SizedBox(height: 16),
+                    if (items.isEmpty)
+                      AppCard(
+                        child: Text(
+                          'No hay notificaciones para este filtro.',
+                          style: TextStyle(color: context.gymMutedText),
+                        ),
+                      )
+                    else
+                      ...items.map((item) => NotificationTile(item: item)),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -272,3 +300,87 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 }
+
+class NotificationItem {
+  final String group;
+  final String title;
+  final String message;
+  final String dateText;
+  final dynamic createdAt;
+  final IconData icon;
+  final Color color;
+  final bool read;
+
+  const NotificationItem({
+    required this.group,
+    required this.title,
+    required this.message,
+    required this.dateText,
+    required this.createdAt,
+    required this.icon,
+    required this.color,
+    required this.read,
+  });
+}
+
+class NotificationTile extends StatelessWidget {
+  final NotificationItem item;
+
+  const NotificationTile({super.key, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: item.color.withValues(alpha: item.read ? 0.10 : 0.18),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(item.icon, color: item.color, size: 22),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        style: TextStyle(
+                          fontWeight: item.read ? FontWeight.w800 : FontWeight.w900,
+                          color: item.read ? context.gymText : context.gymPrimary,
+                        ),
+                      ),
+                    ),
+                    if (!item.read)
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(color: context.gymPrimary, shape: BoxShape.circle),
+                      ),
+                  ],
+                ),
+                if (item.message.isNotEmpty) ...[
+                  SizedBox(height: 4),
+                  Text(item.message, style: TextStyle(color: context.gymMutedText)),
+                ],
+                SizedBox(height: 4),
+                Text(item.dateText, style: TextStyle(color: context.gymMutedText, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+

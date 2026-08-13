@@ -161,51 +161,51 @@ class _AuthPageState extends State<AuthPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.fitness_center, size: 52, color: Colors.greenAccent),
-                    const SizedBox(height: 12),
-                    const Text(
+                    Icon(Icons.fitness_center, size: 52, color: Colors.greenAccent),
+                    SizedBox(height: 12),
+                    Text(
                       'GymFlow',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     Text(
                       registerMode ? 'Crear cuenta admin de $defaultGymName' : 'Iniciar sesión',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70),
+                      style: TextStyle(color: Colors.white70),
                     ),
-                    const SizedBox(height: 24),
+                    SizedBox(height: 24),
                     if (registerMode) ...[
                       AppTextField(controller: nameController, label: 'Nombre del administrador'),
-                      const SizedBox(height: 12),
-                      const Text(
+                      SizedBox(height: 12),
+                      Text(
                         'Esta cuenta será admin del gimnasio. Los entrenadores se crean después desde el panel de Entrenadores.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white60, fontSize: 12),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: 12),
                     ],
                     AppTextField(
                       controller: emailController,
                       label: 'Email',
                       keyboardType: TextInputType.emailAddress,
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     AppTextField(
                       controller: passwordController,
                       label: 'Contraseña',
                       obscureText: true,
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20),
                     FilledButton.icon(
                       onPressed: loading ? null : submit,
                       icon: loading
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.login),
+                          : Icon(Icons.login),
                       label: Text(registerMode ? 'Crear admin de $defaultGymName' : 'Entrar'),
                     ),
                     TextButton(
@@ -215,7 +215,7 @@ class _AuthPageState extends State<AuthPage> {
                     if (!registerMode)
                       TextButton(
                         onPressed: loading ? null : resetPassword,
-                        child: const Text('¿Has olvidado la contraseña?'),
+                        child: Text('¿Has olvidado la contraseña?'),
                       ),
                   ],
                 ),
@@ -227,3 +227,6 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 }
+
+
+

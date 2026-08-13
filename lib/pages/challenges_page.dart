@@ -1,9 +1,13 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-
+import '../theme/app_theme.dart';
+import '../services/challenge_service.dart';
+import '../services/duel_service.dart';
 import '../widgets/app_card.dart';
-import '../widgets/profile_avatar.dart';
+import '../widgets/challenge_card.dart';
+import '../widgets/challenge_creation_dialog.dart';
+import '../widgets/duel_card.dart';
+import '../widgets/duel_creation_dialog.dart';
 
 class ChallengesPage extends StatelessWidget {
   final String gymId;
@@ -21,263 +25,252 @@ class ChallengesPage extends StatelessWidget {
     this.trainerMode = false,
   });
 
-  CollectionReference<Map<String, dynamic>> get challengesRef => FirebaseFirestore.instance
-      .collection('gyms')
-      .doc(gymId)
-      .collection('challenges');
-
-  CollectionReference<Map<String, dynamic>> get communityRef => FirebaseFirestore.instance
-      .collection('gyms')
-      .doc(gymId)
-      .collection('community_posts');
-
-  int intValue(dynamic value, {int fallback = 0}) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
-  }
-
-  String formatDate(dynamic value) {
-    if (value is Timestamp) {
-      final date = value.toDate();
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      final year = date.year.toString();
-      return '$day/$month/$year';
-    }
-    return 'Fecha pendiente';
-  }
+  ChallengeService get service => ChallengeService(gymId: gymId, userEmail: userEmail);
+  DuelService get duelService => DuelService(gymId: gymId);
 
   Future<void> createChallenge(BuildContext context) async {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final targetController = TextEditingController(text: '12');
-
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Crear reto'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Título',
-                    hintText: 'Reto Agosto',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descriptionController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Descripción',
-                    hintText: 'Completar entrenamientos durante el mes.',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: targetController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Objetivo de entrenamientos',
-                    hintText: '12',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'En esta primera versión los retos son de tipo “entrenamientos completados”.',
-                  style: TextStyle(color: Colors.white60, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton.icon(
-              onPressed: () {
-                final title = titleController.text.trim();
-                final description = descriptionController.text.trim();
-                final target = int.tryParse(targetController.text.trim()) ?? 0;
-                if (title.isEmpty || target <= 0) return;
-                Navigator.pop(dialogContext, {
-                  'title': title,
-                  'description': description,
-                  'target': target,
-                });
-              },
-              icon: const Icon(Icons.emoji_events),
-              label: const Text('Crear reto'),
-            ),
-          ],
-        );
-      },
-    );
-
-    titleController.dispose();
-    descriptionController.dispose();
-    targetController.dispose();
-
+    final challengeService = service;
+    final result = await showChallengeCreationDialog(context: context, service: challengeService);
     if (result == null) return;
 
-    await challengesRef.add({
-      'title': result['title'],
-      'description': result['description'],
-      'type': 'workout_count',
-      'target': result['target'],
-      'active': true,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    await challengeService.createChallenge(
+      title: result.title,
+      description: result.description,
+      type: result.type,
+      target: result.target,
+    );
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reto creado.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reto creado.')));
     }
   }
 
-  Future<void> toggleChallengeActive(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-    bool active,
-  ) async {
-    await challengesRef.doc(doc.id).update({
-      'active': active,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
-  Future<void> deleteChallenge(
-    BuildContext context,
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+  Future<void> deleteChallenge(BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final challengeService = service;
     final title = doc.data()['title']?.toString() ?? 'este reto';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Eliminar reto'),
+          backgroundColor: context.gymSurface,
+          title: Text('Eliminar reto'),
           content: Text('¿Seguro que quieres eliminar "$title"?'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancelar'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('Cancelar')),
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Eliminar'),
+              icon: Icon(Icons.delete_outline),
+              label: Text('Eliminar'),
             ),
           ],
         );
       },
     );
     if (confirm != true) return;
-    await challengesRef.doc(doc.id).delete();
+    await challengeService.deleteChallenge(doc.id);
+  }
+
+  Future<void> createDuel(BuildContext context) async {
+    final result = await showDuelCreationDialog(
+      context: context,
+      service: duelService,
+      currentUserId: userId,
+      currentUserName: userName,
+      currentUserEmail: userEmail,
+      trainerMode: trainerMode,
+    );
+    if (result == null) return;
+
+    await duelService.createDuel(
+      challenger: result.challenger,
+      opponent: result.opponent,
+      metric: result.metric,
+      target: result.target,
+      points: result.points,
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duelo creado.')));
+    }
+  }
+
+  Future<void> showNewActionMenu(BuildContext context) async {
+    if (!trainerMode) {
+      await createDuel(context);
+      return;
+    }
+
+    final option = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: context.gymSurface,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Crear nuevo', style: TextStyle(color: context.gymText, fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 12),
+                _NewChallengeActionTile(
+                  icon: Icons.emoji_events,
+                  iconColor: Colors.amberAccent,
+                  title: 'Nuevo reto global',
+                  subtitle: 'Crear un reto para todo el gimnasio',
+                  onTap: () => Navigator.pop(sheetContext, 'challenge'),
+                ),
+                const SizedBox(height: 8),
+                _NewChallengeActionTile(
+                  icon: Icons.sports_mma,
+                  iconColor: context.gymPrimary,
+                  title: 'Nuevo duelo 1 vs 1',
+                  subtitle: 'Retar a dos clientes entre sí',
+                  onTap: () => Navigator.pop(sheetContext, 'duel'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (option == 'challenge') createChallenge(context);
+    if (option == 'duel') createDuel(context);
   }
 
   @override
   Widget build(BuildContext context) {
+    final challengeService = service;
     final isCompact = MediaQuery.of(context).size.width < 600;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Retos')),
-      floatingActionButton: trainerMode
-          ? FloatingActionButton.extended(
-              onPressed: () => createChallenge(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Nuevo reto'),
-            )
-          : null,
+      appBar: AppBar(title: Text('Retos')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => showNewActionMenu(context),
+        icon: Icon(Icons.add),
+        label: Text('Nuevo'),
+      ),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: challengesRef.orderBy('createdAt', descending: true).snapshots(),
+          stream: challengeService.challengesRef.orderBy('createdAt', descending: true).snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return Center(child: CircularProgressIndicator());
             }
+
             final allChallenges = snapshot.data?.docs ?? [];
             final challenges = trainerMode
                 ? allChallenges
                 : allChallenges.where((doc) => doc.data()['active'] != false).toList();
 
-            return ListView(
-              padding: EdgeInsets.all(isCompact ? 12 : 16),
-              children: [
-                AppCard(
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: Colors.amberAccent.withOpacity(0.14),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(Icons.emoji_events, color: Colors.amberAccent),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              trainerMode ? 'Retos del gimnasio' : 'Mis retos',
-                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            return FutureBuilder<ChallengeStats>(
+              future: trainerMode ? Future.value(ChallengeStats.empty()) : challengeService.loadUserStats(),
+              builder: (context, statsSnapshot) {
+                final stats = statsSnapshot.data ?? ChallengeStats.empty();
+                if (!trainerMode && statsSnapshot.hasData) {
+                  Future.microtask(() => challengeService.completeEligibleChallenges(
+                        challenges: challenges,
+                        stats: stats,
+                        userId: userId,
+                        userName: userName,
+                        userEmail: userEmail,
+                      ));
+                }
+
+                return ListView(
+                  padding: EdgeInsets.all(isCompact ? 12 : 16),
+                  children: [
+                    AppCard(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: Colors.amberAccent.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              trainerMode
-                                  ? 'Crea retos para motivar a toda la comunidad de DalaiGym.'
-                                  : 'Completa entrenamientos y desbloquea los retos activos.',
-                              style: const TextStyle(color: Colors.white70),
+                            child: Icon(Icons.emoji_events, color: Colors.amberAccent),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  trainerMode ? 'Retos del gimnasio' : 'Mis retos',
+                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                                ),
+                                SizedBox(height: 3),
+                                Text(
+                                  trainerMode
+                                      ? 'Crea retos de entrenamientos, volumen, series, rachas, objetivos o mediciones.'
+                                      : 'Completa entrenamientos, desbloquea retos activos y reta a otros clientes de DalaiGym.',
+                                  style: TextStyle(color: context.gymMutedText),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: isCompact ? 10 : 16),
-                if (challenges.isEmpty)
-                  AppCard(
-                    child: Text(
-                      trainerMode
-                          ? 'Todavía no hay retos creados. Pulsa “Nuevo reto” para crear el primero.'
-                          : 'Todavía no hay retos activos.',
-                      style: const TextStyle(color: Colors.white70),
                     ),
-                  )
-                else
-                  ...challenges.map((doc) {
-                    if (trainerMode) {
-                      return TrainerChallengeCard(
-                        doc: doc,
-                        onToggleActive: (active) => toggleChallengeActive(doc, active),
-                        onDelete: () => deleteChallenge(context, doc),
-                        formatDate: formatDate,
-                      );
-                    }
-                    return UserChallengeCard(
-                      challengeDoc: doc,
-                      userId: userId,
-                      userName: userName,
-                      userEmail: userEmail,
-                      formatDate: formatDate,
-                    );
-                  }),
-              ],
+                    SizedBox(height: isCompact ? 10 : 16),
+                    if (challenges.isEmpty)
+                      AppCard(
+                        child: Text(
+                          trainerMode
+                              ? 'Todavía no hay retos creados. Pulsa "Nuevo reto" para crear el primero.'
+                              : 'Todavía no hay retos activos.',
+                          style: TextStyle(color: context.gymMutedText),
+                        ),
+                      )
+                    else
+                      ...challenges.map((doc) {
+                        if (trainerMode) {
+                          return TrainerChallengeCard(
+                            doc: doc,
+                            service: challengeService,
+                            onToggleActive: (active) => challengeService.toggleChallengeActive(doc.id, active),
+                            onDelete: () => deleteChallenge(context, doc),
+                          );
+                        }
+                        return UserChallengeCard(
+                          challengeDoc: doc,
+                          userName: userName,
+                          stats: stats,
+                          service: challengeService,
+                        );
+                      }),
+                    SizedBox(height: 16),
+                    Text('Duelos 1 vs 1', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                    SizedBox(height: 10),
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: duelService.duelsRef.orderBy('createdAt', descending: true).snapshots(),
+                      builder: (context, duelSnapshot) {
+                        if (duelSnapshot.connectionState == ConnectionState.waiting) {
+                          return Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        final duels = duelSnapshot.data?.docs ?? [];
+                        if (duels.isEmpty) {
+                          return AppCard(
+                            child: Text('Todavía no hay duelos 1 vs 1.', style: TextStyle(color: context.gymMutedText)),
+                          );
+                        }
+
+                        return Column(
+                          children: duels.map((doc) => DuelCard(doc: doc, service: duelService)).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -286,222 +279,61 @@ class ChallengesPage extends StatelessWidget {
   }
 }
 
-class TrainerChallengeCard extends StatelessWidget {
-  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
-  final ValueChanged<bool> onToggleActive;
-  final VoidCallback onDelete;
-  final String Function(dynamic value) formatDate;
 
-  const TrainerChallengeCard({
-    super.key,
-    required this.doc,
-    required this.onToggleActive,
-    required this.onDelete,
-    required this.formatDate,
+
+
+class _NewChallengeActionTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _NewChallengeActionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
   });
-
-  int intValue(dynamic value, {int fallback = 0}) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
-  }
 
   @override
   Widget build(BuildContext context) {
-    final data = doc.data();
-    final title = data['title']?.toString() ?? 'Reto';
-    final description = data['description']?.toString() ?? '';
-    final target = intValue(data['target']);
-    final active = data['active'] != false;
-
-    return AppCard(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Colors.amberAccent.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Icon(Icons.emoji_events, color: Colors.amberAccent),
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: context.gymSubtleSurface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: context.gymBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                    if (description.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(description, style: const TextStyle(color: Colors.white70)),
-                    ],
-                  ],
-                ),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'delete') onDelete();
-                  if (value == 'toggle') onToggleActive(!active);
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: 'toggle',
-                    child: Text(active ? 'Desactivar' : 'Activar'),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Eliminar'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _ChallengeChip(text: '$target entrenamientos'),
-              _ChallengeChip(text: active ? 'Activo' : 'Inactivo'),
-              _ChallengeChip(text: 'Creado ${formatDate(data['createdAt'])}'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class UserChallengeCard extends StatelessWidget {
-  final QueryDocumentSnapshot<Map<String, dynamic>> challengeDoc;
-  final String userId;
-  final String userName;
-  final String userEmail;
-  final String Function(dynamic value) formatDate;
-
-  const UserChallengeCard({
-    super.key,
-    required this.challengeDoc,
-    required this.userId,
-    required this.userName,
-    required this.userEmail,
-    required this.formatDate,
-  });
-
-  int intValue(dynamic value, {int fallback = 0}) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final data = challengeDoc.data();
-    final title = data['title']?.toString() ?? 'Reto';
-    final description = data['description']?.toString() ?? '';
-    final target = intValue(data['target'], fallback: 1);
-    final progressRef = challengeDoc.reference.collection('progress').doc(userId);
-
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: progressRef.snapshots(),
-      builder: (context, snapshot) {
-        final progressData = snapshot.data?.data();
-        final count = intValue(progressData?['count']);
-        final completed = progressData?['completed'] == true;
-        final percent = target <= 0 ? 0.0 : (count / target).clamp(0.0, 1.0);
-
-        return AppCard(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+              child: Icon(icon, color: iconColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ProfileAvatar(name: userName, size: 42),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                        if (description.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(description, style: const TextStyle(color: Colors.white70)),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    completed ? Icons.emoji_events : Icons.flag,
-                    color: completed ? Colors.amberAccent : Colors.greenAccent,
-                  ),
+                  Text(title, style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w700)),
                 ],
               ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: percent,
-                  minHeight: 10,
-                  backgroundColor: Colors.white10,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    completed ? Colors.amberAccent : Colors.greenAccent,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '$count / $target entrenamientos',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  Text(
-                    '${(percent * 100).round()}%',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-              if (completed && progressData?['completedAt'] != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Completado el ${formatDate(progressData?['completedAt'])}',
-                  style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _ChallengeChip extends StatelessWidget {
-  final String text;
-  const _ChallengeChip({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            Icon(Icons.chevron_right, color: context.gymMutedText.withValues(alpha: 0.70)),
+          ],
+        ),
       ),
     );
   }

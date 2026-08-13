@@ -18,7 +18,7 @@ class UserAchievementsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis logros')),
+      appBar: AppBar(title: Text('Mis logros')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -34,3 +34,6 @@ class UserAchievementsPage extends StatelessWidget {
     );
   }
 }
+
+
+

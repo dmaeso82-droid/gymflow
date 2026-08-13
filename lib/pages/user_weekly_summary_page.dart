@@ -17,7 +17,7 @@ class UserWeeklySummaryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Resumen semanal')),
+      appBar: AppBar(title: Text('Resumen semanal')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -34,3 +34,6 @@ class UserWeeklySummaryPage extends StatelessWidget {
     );
   }
 }
+
+
+

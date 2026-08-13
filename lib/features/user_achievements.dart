@@ -1,29 +1,34 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
+import '../services/achievement_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/section_title.dart';
 
 class AchievementDefinition {
   final IconData icon;
+  final String id;
   final String title;
   final String description;
   final int current;
   final int target;
   final Color color;
+  final bool permanentlyUnlocked;
 
   const AchievementDefinition({
     required this.icon,
+    required this.id,
     required this.title,
     required this.description,
     required this.current,
     required this.target,
     required this.color,
+    this.permanentlyUnlocked = false,
   });
 
-  bool get unlocked => current >= target;
+  bool get unlocked => permanentlyUnlocked || current >= target;
   double get progress => target <= 0 ? 0 : (current / target).clamp(0, 1).toDouble();
 }
 
@@ -41,218 +46,125 @@ class UserAchievementsPanel extends StatelessWidget {
     this.compact = false,
   });
 
-  CollectionReference<Map<String, dynamic>> get logsRef => FirebaseFirestore.instance
+  AchievementService get service => AchievementService(
+        gymId: gymId,
+        userId: userId,
+        userName: '',
+        userEmail: userEmail,
+      );
+
+  CollectionReference<Map<String, dynamic>> get unlockedRef => FirebaseFirestore.instance
       .collection('gyms')
       .doc(gymId)
-      .collection('workout_logs');
+      .collection('user_achievements');
 
-  CollectionReference<Map<String, dynamic>> get goalsRef => FirebaseFirestore.instance
-      .collection('gyms')
-      .doc(gymId)
-      .collection('goals');
-
-  int intValue(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+  IconData iconFor(String iconKey) {
+    switch (iconKey) {
+      case 'workout':
+        return Icons.play_circle_fill;
+      case 'series':
+        return Icons.fitness_center;
+      case 'volume':
+        return Icons.monitor_weight;
+      case 'streak':
+        return Icons.local_fire_department;
+      case 'exercise':
+        return Icons.auto_graph;
+      case 'trophy':
+      default:
+        return Icons.emoji_events;
+    }
   }
 
-  int timestampSortValue(dynamic value) {
-    if (value is Timestamp) return value.millisecondsSinceEpoch;
-    return 0;
-  }
-
-  int trainingStreak(List<QueryDocumentSnapshot<Map<String, dynamic>>> logs) {
-    final trainingDays = <DateTime>{};
-
-    for (final log in logs) {
-      final createdAt = log.data()['createdAt'];
-      if (createdAt is! Timestamp) continue;
-      final date = createdAt.toDate();
-      trainingDays.add(DateTime(date.year, date.month, date.day));
+  Color colorFor(String iconKey) {
+    switch (iconKey) {
+      case 'workout':
+        return Colors.greenAccent;
+      case 'series':
+        return Colors.lightBlueAccent;
+      case 'volume':
+        return Colors.purpleAccent;
+      case 'streak':
+        return Colors.orangeAccent;
+      case 'exercise':
+        return Colors.indigoAccent;
+      case 'trophy':
+      default:
+        return Colors.amberAccent;
     }
-
-    if (trainingDays.isEmpty) return 0;
-
-    var currentDay = DateTime.now();
-    currentDay = DateTime(currentDay.year, currentDay.month, currentDay.day);
-    var streak = 0;
-
-    if (!trainingDays.contains(currentDay)) {
-      final yesterday = currentDay.subtract(const Duration(days: 1));
-      if (trainingDays.contains(yesterday)) {
-        currentDay = yesterday;
-      } else {
-        return 0;
-      }
-    }
-
-    while (trainingDays.contains(currentDay)) {
-      streak++;
-      currentDay = currentDay.subtract(const Duration(days: 1));
-    }
-
-    return streak;
   }
 
   List<AchievementDefinition> buildAchievements({
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> logs,
-    required int completedGoals,
+    required AchievementStats stats,
+    required Set<String> unlockedIds,
   }) {
-    final seriesCount = logs.length;
-    final streak = trainingStreak(logs);
-    final distinctExercises = <String>{};
+    return automaticAchievementDefinitions.map((definition) {
+      return AchievementDefinition(
+        id: definition.id,
+        icon: iconFor(definition.iconKey),
+        title: definition.title,
+        description: definition.description,
+        current: stats.valueFor(definition.metric),
+        target: definition.target,
+        color: colorFor(definition.iconKey),
+        permanentlyUnlocked: unlockedIds.contains(definition.id),
+      );
+    }).toList();
+  }
 
-    for (final log in logs) {
-      final exercise = log.data()['exercise']?.toString().trim() ?? '';
-      if (exercise.isNotEmpty) distinctExercises.add(exercise);
-    }
-
-    return [
-      AchievementDefinition(
-        icon: Icons.play_circle_fill,
-        title: 'Primer entrenamiento',
-        description: 'Registra tu primera serie de entrenamiento.',
-        current: seriesCount,
-        target: 1,
-        color: Colors.greenAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.fitness_center,
-        title: '10 series registradas',
-        description: 'Acumula 10 series registradas.',
-        current: seriesCount,
-        target: 10,
-        color: Colors.lightBlueAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.fitness_center,
-        title: '50 series registradas',
-        description: 'Acumula 50 series registradas.',
-        current: seriesCount,
-        target: 50,
-        color: Colors.purpleAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.workspace_premium,
-        title: '100 series registradas',
-        description: 'Acumula 100 series registradas.',
-        current: seriesCount,
-        target: 100,
-        color: Colors.amberAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.local_fire_department,
-        title: 'Racha de 3 días',
-        description: 'Entrena durante 3 días seguidos.',
-        current: streak,
-        target: 3,
-        color: Colors.orangeAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.local_fire_department,
-        title: 'Racha de 7 días',
-        description: 'Entrena durante 7 días seguidos.',
-        current: streak,
-        target: 7,
-        color: Colors.deepOrangeAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.whatshot,
-        title: 'Racha de 30 días',
-        description: 'Entrena durante 30 días seguidos.',
-        current: streak,
-        target: 30,
-        color: Colors.redAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.flag,
-        title: 'Primer objetivo completado',
-        description: 'Completa tu primer objetivo asignado.',
-        current: completedGoals,
-        target: 1,
-        color: Colors.cyanAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.flag_circle,
-        title: '5 objetivos completados',
-        description: 'Completa 5 objetivos asignados.',
-        current: completedGoals,
-        target: 5,
-        color: Colors.tealAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.emoji_events,
-        title: '10 objetivos completados',
-        description: 'Completa 10 objetivos asignados.',
-        current: completedGoals,
-        target: 10,
-        color: Colors.amber,
-      ),
-      AchievementDefinition(
-        icon: Icons.trending_up,
-        title: 'Primer ejercicio con marca',
-        description: 'Registra marcas en tu primer ejercicio.',
-        current: distinctExercises.length,
-        target: 1,
-        color: Colors.greenAccent,
-      ),
-      AchievementDefinition(
-        icon: Icons.auto_graph,
-        title: '10 ejercicios diferentes',
-        description: 'Registra marcas en 10 ejercicios diferentes.',
-        current: distinctExercises.length,
-        target: 10,
-        color: Colors.indigoAccent,
-      ),
-    ];
+  bool isForUser(Map<String, dynamic> data) {
+    final storedUserId = data['userId']?.toString() ?? '';
+    final storedEmail = (data['userEmail'] ?? '').toString().toLowerCase();
+    final normalizedEmail = userEmail.toLowerCase();
+    return (userId.isNotEmpty && storedUserId == userId) ||
+        (normalizedEmail.isNotEmpty && storedEmail == normalizedEmail);
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: logsRef.where('userId', isEqualTo: userId).snapshots(),
-      builder: (context, logsSnapshot) {
-        if (logsSnapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(child: Center(child: CircularProgressIndicator()));
+    return FutureBuilder<AchievementStats>(
+      future: service.loadStats(),
+      builder: (context, statsSnapshot) {
+        if (statsSnapshot.connectionState == ConnectionState.waiting) {
+          return AppCard(child: Center(child: CircularProgressIndicator()));
         }
 
-        final logs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(logsSnapshot.data?.docs ?? []);
-        logs.sort((a, b) {
-          final aDate = timestampSortValue(a.data()['createdAt']);
-          final bDate = timestampSortValue(b.data()['createdAt']);
-          return bDate.compareTo(aDate);
-        });
+        final stats = statsSnapshot.data ?? const AchievementStats(workouts: 0, series: 0, volume: 0, streak: 0, exercises: 0);
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: goalsRef.where('clientEmail', isEqualTo: userEmail.toLowerCase()).snapshots(),
-          builder: (context, goalsSnapshot) {
-            final goals = goalsSnapshot.data?.docs ?? [];
-            final completedGoals = goals.where((goal) => goal.data()['completed'] == true).length;
-            final achievements = buildAchievements(logs: logs, completedGoals: completedGoals);
+          stream: unlockedRef.snapshots(),
+          builder: (context, unlockedSnapshot) {
+            final unlockedDocs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(unlockedSnapshot.data?.docs ?? [])
+                .where((doc) => isForUser(doc.data()))
+                .toList();
+            final unlockedIds = unlockedDocs.map((doc) => doc.data()['achievementId']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
+            final achievements = buildAchievements(stats: stats, unlockedIds: unlockedIds);
             final unlocked = achievements.where((achievement) => achievement.unlocked).toList();
             final locked = achievements.where((achievement) => !achievement.unlocked).toList();
+            final unlockedPreview = unlocked.reversed.take(3).toList();
             final visible = compact
-                ? [...unlocked.reversed.take(3), ...locked.take(3 - unlocked.reversed.take(3).length)]
+                ? [...unlockedPreview, ...locked.take(3 - unlockedPreview.length)]
                 : achievements;
 
             return AppCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionTitle(icon: Icons.military_tech, title: 'Logros'),
-                  const SizedBox(height: 12),
+                  SectionTitle(icon: Icons.military_tech, title: 'Logros'),
+                  SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
                       InfoChip(text: '${unlocked.length}/${achievements.length} desbloqueados'),
+                      InfoChip(text: '${stats.workouts} entrenos'),
+                      InfoChip(text: '${stats.volume} kg movidos'),
                       if (locked.isNotEmpty) InfoChip(text: 'Siguiente: ${locked.first.title}'),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   if (visible.isEmpty)
-                    const Text('Todavía no hay logros disponibles.', style: TextStyle(color: Colors.white70))
+                    Text('Todavía no hay logros disponibles.', style: TextStyle(color: context.gymMutedText))
                   else
                     ...visible.map((achievement) => AchievementTile(achievement: achievement, compact: compact)),
                 ],
@@ -279,9 +191,9 @@ class AchievementTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF020617),
+        color: context.gymSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: unlocked ? achievement.color.withOpacity(0.35) : Colors.white10),
+        border: Border.all(color: unlocked ? achievement.color.withValues(alpha: 0.35) : context.gymBorder),
       ),
       child: Row(
         children: [
@@ -289,15 +201,15 @@ class AchievementTile extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: (unlocked ? achievement.color : Colors.white54).withOpacity(0.12),
+              color: (unlocked ? achievement.color : context.gymMutedText).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               unlocked ? achievement.icon : Icons.lock_outline,
-              color: unlocked ? achievement.color : Colors.white54,
+              color: unlocked ? achievement.color : context.gymMutedText,
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -306,27 +218,27 @@ class AchievementTile extends StatelessWidget {
                   achievement.title,
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: unlocked ? Colors.white : Colors.white70,
+                    color: unlocked ? Colors.white : context.gymMutedText,
                   ),
                 ),
                 if (!compact) ...[
-                  const SizedBox(height: 4),
-                  Text(achievement.description, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                  SizedBox(height: 4),
+                  Text(achievement.description, style: TextStyle(color: context.gymMutedText, fontSize: 12)),
                 ],
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: achievement.progress,
                     minHeight: 7,
-                    backgroundColor: Colors.white12,
-                    color: unlocked ? achievement.color : Colors.white54,
+                    backgroundColor: context.gymProgressTrack,
+                    color: unlocked ? achievement.color : context.gymMutedText,
                   ),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 Text(
                   unlocked ? 'Desbloqueado' : '${achievement.current}/${achievement.target}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  style: TextStyle(color: context.gymMutedText, fontSize: 11),
                 ),
               ],
             ),
@@ -336,3 +248,6 @@ class AchievementTile extends StatelessWidget {
     );
   }
 }
+
+
+

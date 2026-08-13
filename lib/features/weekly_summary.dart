@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../utils/app_formatters.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
@@ -21,32 +23,19 @@ class WeeklySummary extends StatelessWidget {
     this.emptyText = 'Todavía no hay entrenamientos registrados esta semana.',
   });
 
-  int intValue(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+double doubleValue(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0.0;
   }
 
-  int timestampSortValue(dynamic value) {
+int timestampSortValue(dynamic value) {
     if (value is Timestamp) return value.millisecondsSinceEpoch;
     return 0;
   }
 
-  String formatDate(dynamic value) {
-    if (value is Timestamp) {
-      final date = value.toDate();
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      final year = date.year.toString();
-      final hour = date.hour.toString().padLeft(2, '0');
-      final minute = date.minute.toString().padLeft(2, '0');
-      return '$day/$month/$year $hour:$minute';
-    }
-
-    return 'Fecha pendiente';
-  }
-
-  bool isThisWeek(dynamic value) {
+bool isThisWeek(dynamic value) {
     if (value is! Timestamp) return false;
 
     final now = DateTime.now();
@@ -64,17 +53,17 @@ class WeeklySummary extends StatelessWidget {
       stream: logsRef.where(filterField, isEqualTo: filterValue).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(
+          return AppCard(
             child: Center(child: CircularProgressIndicator()),
           );
         }
 
         final allLogs = [...(snapshot.data?.docs ?? [])];
-        final weekLogs = allLogs.where((doc) => isThisWeek(doc.data()['createdAt'])).toList();
+        final weekLogs = allLogs.where((doc) => AppFormatters.isThisWeek(doc.data()['createdAt'])).toList();
 
         weekLogs.sort((a, b) {
-          final aDate = timestampSortValue(a.data()['createdAt']);
-          final bDate = timestampSortValue(b.data()['createdAt']);
+          final aDate = AppFormatters.timestampSortValue(a.data()['createdAt']);
+          final bDate = AppFormatters.timestampSortValue(b.data()['createdAt']);
           return bDate.compareTo(aDate);
         });
 
@@ -84,8 +73,8 @@ class WeeklySummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SectionTitle(icon: Icons.calendar_view_week, title: title),
-                const SizedBox(height: 12),
-                Text(emptyText, style: const TextStyle(color: Colors.white70)),
+                SizedBox(height: 12),
+                Text(emptyText, style: TextStyle(color: context.gymMutedText)),
               ],
             ),
           );
@@ -93,39 +82,42 @@ class WeeklySummary extends StatelessWidget {
 
         final exercises = <String>{};
         Map<String, dynamic>? bestRecord;
+        double weekVolume = 0;
 
         for (final doc in weekLogs) {
           final data = doc.data();
           final exercise = data['exercise']?.toString().trim() ?? '';
-          final weight = intValue(data['weight']);
-          final reps = intValue(data['reps']);
+          final weight = AppFormatters.doubleValue(data['weight']);
+          final reps = AppFormatters.intValue(data['reps']);
+          weekVolume += weight * reps;
 
           if (exercise.isNotEmpty) exercises.add(exercise);
 
           if (bestRecord == null ||
-              weight > intValue(bestRecord['weight']) ||
-              (weight == intValue(bestRecord['weight']) && reps > intValue(bestRecord['reps']))) {
+              weight > AppFormatters.doubleValue(bestRecord['weight']) ||
+              (weight == AppFormatters.doubleValue(bestRecord['weight']) && reps > AppFormatters.intValue(bestRecord['reps']))) {
             bestRecord = data;
           }
         }
 
         final latest = weekLogs.first.data();
-        final latestDate = formatDate(latest['createdAt']);
+        final latestDate = AppFormatters.formatDate(latest['createdAt']);
         final bestExercise = bestRecord?['exercise']?.toString() ?? 'Sin marca';
-        final bestWeight = intValue(bestRecord?['weight']);
-        final bestReps = intValue(bestRecord?['reps']);
+        final bestWeight = AppFormatters.formatCompact(AppFormatters.doubleValue(bestRecord?['weight']));
+        final bestReps = AppFormatters.intValue(bestRecord?['reps']);
 
         return AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionTitle(icon: Icons.calendar_view_week, title: title),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   InfoChip(text: '${weekLogs.length} series esta semana'),
+                  InfoChip(text: 'Volumen: ${AppFormatters.formatCompact(weekVolume)} kg'),
                   InfoChip(text: '${exercises.length} ejercicios'),
                   InfoChip(text: 'Último: $latestDate'),
                   InfoChip(text: 'Mejor: $bestExercise $bestWeight kg x $bestReps'),
@@ -138,3 +130,6 @@ class WeeklySummary extends StatelessWidget {
     );
   }
 }
+
+
+

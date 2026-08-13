@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../theme/app_theme.dart';
 import 'app_card.dart';
 
 class HeaderCard extends StatelessWidget {
@@ -15,28 +15,29 @@ class HeaderCard extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.greenAccent.withOpacity(0.1),
+              color: context.gymFitnessAccent.withValues(alpha: context.gymIsDark ? 0.14 : 0.10),
               borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: context.gymFitnessAccent.withValues(alpha: 0.18)),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.bolt, color: Colors.greenAccent, size: 16),
+                Icon(Icons.bolt, color: context.gymFitnessAccent, size: 16),
                 const SizedBox(width: 6),
-                Text(subtitle, style: const TextStyle(color: Colors.greenAccent)),
+                Text(subtitle, style: TextStyle(color: context.gymFitnessAccent, fontWeight: FontWeight.w800)),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'Rutinas claras para entrenadores y usuarios',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+            style: TextStyle(color: context.gymText, fontSize: 26, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Crea clientes, asigna rutinas y registra el progreso con datos guardados en Firebase.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: context.gymMutedText),
           ),
         ],
       ),

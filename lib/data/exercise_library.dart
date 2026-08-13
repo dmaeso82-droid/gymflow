@@ -1,5 +1,6 @@
 
 const String favoriteExerciseGroup = 'Favoritos';
+const String customExerciseGroup = 'Personalizados';
 const String customExerciseOption = 'Personalizado';
 
 const List<String> favoriteExerciseNames = [
@@ -197,4 +198,7 @@ List<String> allExerciseNames() {
   }
   return names.toList()..sort();
 }
+
+
+
 

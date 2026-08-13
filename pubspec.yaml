@@ -1,25 +1,23 @@
 name: gymflow
+description: GymFlow DalaiGym
+publish_to: 'none'
 version: 1.0.0+1
-publish_to: "none"
-description: MVP GymFlow con Firebase Auth y Cloud Firestore.
-
 environment:
-  sdk: ">=3.4.0 <4.0.0"
-
+  sdk: '>=3.4.0 <4.0.0'
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: ^4.12.1
-  firebase_auth: ^6.5.6
-  cloud_firestore: ^6.7.1
-  fl_chart: ^0.71.0
-
-  cupertino_icons: any
-
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.0
+  cloud_firestore: ^6.0.0
+  firebase_storage: ^13.0.0
+  image_picker: ^1.1.2
+  fl_chart: ^1.0.0
+  cupertino_icons: ^1.0.8
+  shared_preferences: ^2.3.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: any
-
+  flutter_lints: ^5.0.0
 flutter:
   uses-material-design: true

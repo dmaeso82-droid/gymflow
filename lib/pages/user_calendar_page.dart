@@ -1,6 +1,8 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../utils/day_utils.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/info_chip.dart';
@@ -17,7 +19,6 @@ class UserCalendarPage extends StatelessWidget {
       .doc(gymId)
       .collection('routines');
 
-  static const weekDays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
   bool isActiveRoutine(Map<String, dynamic> data) {
     return (data['status'] ?? 'active').toString() != 'archived';
@@ -26,13 +27,13 @@ class UserCalendarPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Calendario semanal')),
+      appBar: AppBar(title: Text('Calendario semanal')),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: routinesRef.where('clientEmail', isEqualTo: userEmail.toLowerCase()).snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return Center(child: CircularProgressIndicator());
             }
 
             final routines = (snapshot.data?.docs ?? [])
@@ -42,11 +43,11 @@ class UserCalendarPage extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const AppCard(
+                AppCard(
                   child: SectionTitle(icon: Icons.calendar_month, title: 'Mi semana'),
                 ),
-                const SizedBox(height: 16),
-                ...weekDays.map((day) {
+                SizedBox(height: 16),
+                ...DayUtils.weekDays.map((day) {
                   final dayRoutines = routines.where((doc) => (doc.data()['day'] ?? '').toString() == day).toList();
 
                   return AppCard(
@@ -54,10 +55,10 @@ class UserCalendarPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(day, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 10),
+                        Text(day, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                        SizedBox(height: 10),
                         if (dayRoutines.isEmpty)
-                          const Text('Descanso o sin rutina activa asignada.', style: TextStyle(color: Colors.white70))
+                          Text('Descanso o sin rutina activa asignada.', style: TextStyle(color: context.gymMutedText))
                         else
                           ...dayRoutines.map((doc) {
                             final data = doc.data();
@@ -86,3 +87,6 @@ class UserCalendarPage extends StatelessWidget {
     );
   }
 }
+
+
+

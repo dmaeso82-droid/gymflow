@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import '../utils/app_formatters.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
@@ -66,45 +68,18 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
     'leg': 'cm',
   };
 
-  double doubleValue(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0;
-  }
-
-  int timestampSortValue(dynamic value) {
+int timestampSortValue(dynamic value) {
     if (value is Timestamp) return value.millisecondsSinceEpoch;
     return 0;
   }
 
-  String formatNumber(double value) {
-    if (value == 0) return '-';
-    if (value == value.roundToDouble()) return value.round().toString();
-    return value.toStringAsFixed(1).replaceAll('.', ',');
-  }
-
-  String signedValue(double value, String unit) {
-    if (value > 0) return '+${formatNumber(value)} $unit';
-    if (value < 0) return '${formatNumber(value)} $unit';
+String signedValue(double value, String unit) {
+    if (value > 0) return '+${AppFormatters.formatNumber(value)} $unit';
+    if (value < 0) return '${AppFormatters.formatNumber(value)} $unit';
     return '0 $unit';
   }
 
-  String formatDate(dynamic value) {
-    if (value is Timestamp) {
-      final date = value.toDate();
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      final year = date.year.toString();
-      final hour = date.hour.toString().padLeft(2, '0');
-      final minute = date.minute.toString().padLeft(2, '0');
-      return '$day/$month/$year $hour:$minute';
-    }
-    return 'Fecha pendiente';
-  }
-
-
-  Future<Map<String,String>> currentActor() async {
+Future<Map<String,String>> currentActor() async {
     final user=FirebaseAuth.instance.currentUser;
     if(user==null) return {'uid':'','name':'Sistema','email':''};
     return {
@@ -114,17 +89,7 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
     };
   }
 
-  String formatShortDate(dynamic value) {
-    if (value is Timestamp) {
-      final date = value.toDate();
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      return '$day/$month';
-    }
-    return '-';
-  }
-
-  Future<void> showMeasurementDialog(BuildContext context) async {
+Future<void> showMeasurementDialog(BuildContext context) async {
     final weightController = TextEditingController();
     final waistController = TextEditingController();
     final chestController = TextEditingController();
@@ -135,8 +100,8 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Registrar medidas'),
+          backgroundColor: context.gymSurface,
+          title: Text('Registrar medidas'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -146,25 +111,25 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
                   label: 'Peso corporal (kg)',
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 AppTextField(
                   controller: waistController,
                   label: 'Cintura (cm)',
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 AppTextField(
                   controller: chestController,
                   label: 'Pecho (cm)',
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 AppTextField(
                   controller: armController,
                   label: 'Brazo (cm)',
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 AppTextField(
                   controller: legController,
                   label: 'Pierna (cm)',
@@ -176,7 +141,7 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar'),
+              child: Text('Cancelar'),
             ),
             FilledButton.icon(
               onPressed: () {
@@ -201,8 +166,8 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
                   'leg': leg,
                 });
               },
-              icon: const Icon(Icons.save),
-              label: const Text('Guardar'),
+              icon: Icon(Icons.save),
+              label: Text('Guardar'),
             ),
           ],
         );
@@ -256,19 +221,19 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Eliminar medida'),
-          content: const Text('¿Seguro que quieres eliminar este registro de medidas? Esta acción no se puede deshacer.'),
+          backgroundColor: context.gymSurface,
+          title: Text('Eliminar medida'),
+          content: Text('¿Seguro que quieres eliminar este registro de medidas? Esta acción no se puede deshacer.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancelar'),
+              child: Text('Cancelar'),
             ),
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Eliminar'),
+              icon: Icon(Icons.delete_outline),
+              label: Text('Eliminar'),
             ),
           ],
         );
@@ -298,12 +263,12 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
     String metric,
   ) {
     final ordered = [...measurements];
-    ordered.sort((a, b) => timestampSortValue(a.data()['createdAt']).compareTo(timestampSortValue(b.data()['createdAt'])));
+    ordered.sort((a, b) => AppFormatters.timestampSortValue(a.data()['createdAt']).compareTo(AppFormatters.timestampSortValue(b.data()['createdAt'])));
 
     final points = <Map<String, dynamic>>[];
     for (final doc in ordered) {
       final data = doc.data();
-      final value = doubleValue(data[metric]);
+      final value = AppFormatters.doubleValue(data[metric]);
       if (value <= 0) continue;
       points.add({
         'x': points.length.toDouble(),
@@ -314,6 +279,18 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
     return points;
   }
 
+
+
+  Query<Map<String, dynamic>> scopedMeasurementsQuery(String normalizedValue) {
+    if (widget.userId?.trim().isNotEmpty == true) {
+      return measurementsRef.where('userId', isEqualTo: widget.userId!.trim());
+    }
+    if (widget.userEmail?.trim().isNotEmpty == true) {
+      return measurementsRef.where('userEmail', isEqualTo: widget.userEmail!.trim().toLowerCase());
+    }
+    final value = widget.filterField.toLowerCase().contains('email') ? normalizedValue : widget.filterValue.trim();
+    return measurementsRef.where(widget.filterField, isEqualTo: value);
+  }
 
   bool matchesMeasurement(Map<String, dynamic> data, String normalizedValue) {
     final configuredFieldValue = (data[widget.filterField] ?? '').toString().toLowerCase().trim();
@@ -336,10 +313,10 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionTitle(icon: Icons.monitor_weight, title: widget.title),
-            const SizedBox(height: 12),
-            const Text(
+            SizedBox(height: 12),
+            Text(
               'No hay identificador suficiente para cargar medidas.',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: context.gymMutedText),
             ),
           ],
         ),
@@ -347,10 +324,10 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
     }
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: measurementsRef.snapshots(),
+      stream: scopedMeasurementsQuery(normalizedValue).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(child: Center(child: CircularProgressIndicator()));
+          return AppCard(child: Center(child: CircularProgressIndicator()));
         }
 
         final List<QueryDocumentSnapshot<Map<String, dynamic>>> measurements =
@@ -358,8 +335,8 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
                 .where((doc) => matchesMeasurement(doc.data(), normalizedValue))
                 .toList();
         measurements.sort((a, b) {
-          final aDate = timestampSortValue(a.data()['createdAt']);
-          final bDate = timestampSortValue(b.data()['createdAt']);
+          final aDate = AppFormatters.timestampSortValue(a.data()['createdAt']);
+          final bDate = AppFormatters.timestampSortValue(b.data()['createdAt']);
           return bDate.compareTo(aDate);
         });
 
@@ -369,23 +346,23 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SectionTitle(icon: Icons.monitor_weight, title: widget.title),
-                const SizedBox(height: 12),
-                Text(widget.emptyText, style: const TextStyle(color: Colors.white70)),
-                const SizedBox(height: 12),
-                const SectionTitle(icon: Icons.show_chart, title: 'Evolución corporal'),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 12),
+                Text(widget.emptyText, style: TextStyle(color: context.gymMutedText)),
+                SizedBox(height: 12),
+                SectionTitle(icon: Icons.show_chart, title: 'Evolución corporal'),
+                SizedBox(height: 8),
+                Text(
                   'Registra al menos 2 mediciones para ver la gráfica de evolución corporal.',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: context.gymMutedText),
                 ),
                 if (widget.allowAdd) ...[
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () => showMeasurementDialog(context),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Registrar medidas'),
+                      icon: Icon(Icons.add),
+                      label: Text('Registrar medidas'),
                     ),
                   ),
                 ],
@@ -396,19 +373,19 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
 
         final latest = measurements.first.data();
         final first = measurements.last.data();
-        final latestWeight = doubleValue(latest['bodyWeight']);
-        final firstWeight = doubleValue(first['bodyWeight']);
-        final latestWaist = doubleValue(latest['waist']);
-        final firstWaist = doubleValue(first['waist']);
+        final latestWeight = AppFormatters.doubleValue(latest['bodyWeight']);
+        final firstWeight = AppFormatters.doubleValue(first['bodyWeight']);
+        final latestWaist = AppFormatters.doubleValue(latest['waist']);
+        final firstWaist = AppFormatters.doubleValue(first['waist']);
         final weightDelta = latestWeight - firstWeight;
         final waistDelta = latestWaist - firstWaist;
-        final latestDate = formatDate(latest['createdAt']);
+        final latestDate = AppFormatters.formatDate(latest['createdAt']);
         final recent = measurements.take(5).toList();
         final metricLabel = metricLabels[selectedMetric] ?? 'Medida';
         final metricUnit = metricUnits[selectedMetric] ?? '';
         final points = chartPoints(measurements, selectedMetric);
-        final firstMetric = points.isEmpty ? 0.0 : doubleValue(points.first['value']);
-        final latestMetric = points.isEmpty ? 0.0 : doubleValue(points.last['value']);
+        final firstMetric = points.isEmpty ? 0.0 : AppFormatters.doubleValue(points.first['value']);
+        final latestMetric = points.isEmpty ? 0.0 : AppFormatters.doubleValue(points.last['value']);
         final metricDelta = latestMetric - firstMetric;
 
         return AppCard(
@@ -416,39 +393,39 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionTitle(icon: Icons.monitor_weight, title: widget.title),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   InfoChip(text: '${measurements.length} registros'),
-                  if (latestWeight > 0) InfoChip(text: 'Peso ${formatNumber(latestWeight)} kg'),
+                  if (latestWeight > 0) InfoChip(text: 'Peso ${AppFormatters.formatNumber(latestWeight)} kg'),
                   if (measurements.length > 1 && latestWeight > 0 && firstWeight > 0)
                     InfoChip(text: 'Cambio peso ${signedValue(weightDelta, 'kg')}'),
-                  if (latestWaist > 0) InfoChip(text: 'Cintura ${formatNumber(latestWaist)} cm'),
+                  if (latestWaist > 0) InfoChip(text: 'Cintura ${AppFormatters.formatNumber(latestWaist)} cm'),
                   if (measurements.length > 1 && latestWaist > 0 && firstWaist > 0)
                     InfoChip(text: 'Cambio cintura ${signedValue(waistDelta, 'cm')}'),
                   InfoChip(text: 'Último: $latestDate'),
                 ],
               ),
               if (widget.allowAdd) ...[
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: () => showMeasurementDialog(context),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Registrar nuevas medidas'),
+                    icon: Icon(Icons.add),
+                    label: Text('Registrar nuevas medidas'),
                   ),
                 ),
               ],
-              const SizedBox(height: 18),
-              const SectionTitle(icon: Icons.show_chart, title: 'Evolución corporal'),
-              const SizedBox(height: 12),
+              SizedBox(height: 18),
+              SectionTitle(icon: Icons.show_chart, title: 'Evolución corporal'),
+              SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: selectedMetric,
-                dropdownColor: const Color(0xFF0F172A),
-                decoration: const InputDecoration(
+                dropdownColor: context.gymSurface,
+                decoration: InputDecoration(
                   labelText: 'Métrica',
                   border: OutlineInputBorder(),
                 ),
@@ -460,76 +437,76 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
                   setState(() => selectedMetric = value);
                 },
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  if (latestMetric > 0) InfoChip(text: '$metricLabel actual ${formatNumber(latestMetric)} $metricUnit'),
+                  if (latestMetric > 0) InfoChip(text: '$metricLabel actual ${AppFormatters.formatNumber(latestMetric)} $metricUnit'),
                   if (points.length > 1) InfoChip(text: 'Cambio ${signedValue(metricDelta, metricUnit)}'),
                   InfoChip(text: '${points.length} puntos'),
                 ],
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               if (points.length >= 2)
                 SizedBox(
                   height: 190,
                   child: BodyMetricLineChart(
                     points: points,
                     unit: metricUnit,
-                    formatNumber: formatNumber,
-                    formatDate: formatShortDate,
+                    formatNumber: AppFormatters.formatNumber,
+                    formatDate: AppFormatters.formatShortDate,
                   ),
                 )
               else
-                const Text(
+                Text(
                   'Registra al menos 2 valores de esta métrica para ver la gráfica.',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: context.gymMutedText),
                 ),
-              const SizedBox(height: 18),
-              const Text(
+              SizedBox(height: 18),
+              Text(
                 'Historial de medidas',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               ...recent.map((doc) {
                 final data = doc.data();
-                final bodyWeight = doubleValue(data['bodyWeight']);
-                final waist = doubleValue(data['waist']);
-                final chest = doubleValue(data['chest']);
-                final arm = doubleValue(data['arm']);
-                final leg = doubleValue(data['leg']);
-                final date = formatDate(data['createdAt']);
+                final bodyWeight = AppFormatters.doubleValue(data['bodyWeight']);
+                final waist = AppFormatters.doubleValue(data['waist']);
+                final chest = AppFormatters.doubleValue(data['chest']);
+                final arm = AppFormatters.doubleValue(data['arm']);
+                final leg = AppFormatters.doubleValue(data['leg']);
+                final date = AppFormatters.formatDate(data['createdAt']);
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF020617),
+                    color: context.gymSubtleSurface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: context.gymBorder),
                   ),
                   child: ListTile(
                     leading: Container(
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: Colors.greenAccent.withOpacity(0.12),
+                        color: context.gymFitnessAccent.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Icon(Icons.straighten, color: Colors.greenAccent),
+                      child: Icon(Icons.straighten, color: context.gymFitnessAccent),
                     ),
-                    title: Text(date, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(date, style: TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Wrap(
                         spacing: 6,
                         runSpacing: 6,
                         children: [
-                          if (bodyWeight > 0) InfoChip(text: '${formatNumber(bodyWeight)} kg'),
-                          if (waist > 0) InfoChip(text: 'Cintura ${formatNumber(waist)} cm'),
-                          if (chest > 0) InfoChip(text: 'Pecho ${formatNumber(chest)} cm'),
-                          if (arm > 0) InfoChip(text: 'Brazo ${formatNumber(arm)} cm'),
-                          if (leg > 0) InfoChip(text: 'Pierna ${formatNumber(leg)} cm'),
+                          if (bodyWeight > 0) InfoChip(text: '${AppFormatters.formatNumber(bodyWeight)} kg'),
+                          if (waist > 0) InfoChip(text: 'Cintura ${AppFormatters.formatNumber(waist)} cm'),
+                          if (chest > 0) InfoChip(text: 'Pecho ${AppFormatters.formatNumber(chest)} cm'),
+                          if (arm > 0) InfoChip(text: 'Brazo ${AppFormatters.formatNumber(arm)} cm'),
+                          if (leg > 0) InfoChip(text: 'Pierna ${AppFormatters.formatNumber(leg)} cm'),
                           if ((data['recordedBy'] ?? '').toString().isNotEmpty)
                             InfoChip(text: 'Por ${data['recordedBy']}'),
                         ],
@@ -539,7 +516,7 @@ class _BodyMeasurementsPanelState extends State<BodyMeasurementsPanel> {
                         ? IconButton(
                             tooltip: 'Eliminar medida',
                             onPressed: () => deleteMeasurement(context, doc),
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                            icon: Icon(Icons.delete_outline, color: Colors.redAccent),
                           )
                         : null,
                   ),
@@ -567,16 +544,9 @@ class BodyMetricLineChart extends StatelessWidget {
     required this.formatDate,
   });
 
-  double doubleValue(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0;
-  }
-
-  @override
+@override
   Widget build(BuildContext context) {
-    final spots = points.map((point) => FlSpot(doubleValue(point['x']), doubleValue(point['value']))).toList();
+    final spots = points.map((point) => FlSpot(AppFormatters.doubleValue(point['x']), AppFormatters.doubleValue(point['value']))).toList();
     final values = spots.map((spot) => spot.y).toList();
     final minValue = values.reduce((a, b) => a < b ? a : b);
     final maxValue = values.reduce((a, b) => a > b ? a : b);
@@ -594,7 +564,7 @@ class BodyMetricLineChart extends StatelessWidget {
           show: true,
           drawVerticalLine: false,
           getDrawingHorizontalLine: (value) => FlLine(
-            color: Colors.white.withOpacity(0.08),
+            color: context.gymBorder,
             strokeWidth: 1,
           ),
         ),
@@ -610,8 +580,8 @@ class BodyMetricLineChart extends StatelessWidget {
                 final index = value.round();
                 if (index < 0 || index >= points.length) return const SizedBox.shrink();
                 return Text(
-                  formatDate(points[index]['createdAt']),
-                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                  AppFormatters.formatDate(points[index]['createdAt']),
+                  style: TextStyle(color: context.gymMutedText, fontSize: 10),
                 );
               },
             ),
@@ -622,25 +592,25 @@ class BodyMetricLineChart extends StatelessWidget {
               reservedSize: 48,
               getTitlesWidget: (value, meta) {
                 return Text(
-                  '${formatNumber(value)}$unit',
-                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                  '${AppFormatters.formatNumber(value)}$unit',
+                  style: TextStyle(color: context.gymMutedText, fontSize: 10),
                 );
               },
             ),
           ),
         ),
-        borderData: FlBorderData(show: true, border: Border.all(color: Colors.white10)),
+        borderData: FlBorderData(show: true, border: Border.all(color: context.gymBorder)),
         lineBarsData: [
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: Colors.greenAccent,
+            color: context.gymFitnessAccent,
             barWidth: 3,
             isStrokeCapRound: true,
             dotData: FlDotData(show: true),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.greenAccent.withOpacity(0.12),
+              color: context.gymFitnessAccent.withValues(alpha: 0.12),
             ),
           ),
         ],
@@ -649,10 +619,10 @@ class BodyMetricLineChart extends StatelessWidget {
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
                 final index = spot.x.round();
-                final date = index >= 0 && index < points.length ? formatDate(points[index]['createdAt']) : '-';
+                final date = index >= 0 && index < points.length ? AppFormatters.formatDate(points[index]['createdAt']) : '-';
                 return LineTooltipItem(
-                  '${formatNumber(spot.y)} $unit\n$date',
-                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  '${AppFormatters.formatNumber(spot.y)} $unit\n$date',
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 );
               }).toList();
             },
@@ -662,3 +632,6 @@ class BodyMetricLineChart extends StatelessWidget {
     );
   }
 }
+
+
+

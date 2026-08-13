@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
-import '../constants.dart';
 import '../firebase_options.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
@@ -262,24 +262,24 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Editar cliente'),
+          backgroundColor: context.gymSurface,
+          title: Text('Editar cliente'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AppTextField(controller: nameController, label: 'Nombre del cliente'),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               AppTextField(
                 controller: emailController,
                 label: 'Email del cliente',
                 keyboardType: TextInputType.emailAddress,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               AppTextField(controller: goalController, label: 'Objetivo'),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text('Cancelar')),
             FilledButton.icon(
               onPressed: () {
                 final name = nameController.text.trim();
@@ -299,8 +299,8 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
                   'goal': goal.isEmpty ? 'Objetivo pendiente' : goal,
                 });
               },
-              icon: const Icon(Icons.save),
-              label: const Text('Guardar'),
+              icon: Icon(Icons.save),
+              label: Text('Guardar'),
             ),
           ],
         );
@@ -354,18 +354,18 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Eliminar cliente'),
+          backgroundColor: context.gymSurface,
+          title: Text('Eliminar cliente'),
           content: Text(
             '¿Seguro que quieres eliminar a $clientName? No se eliminarán sus rutinas ni sus entrenamientos, solo la ficha del cliente.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('Cancelar')),
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Eliminar'),
+              icon: Icon(Icons.delete_outline),
+              label: Text('Eliminar'),
             ),
           ],
         );
@@ -391,7 +391,7 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Clientes')),
+      appBar: AppBar(title: Text('Clientes')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -400,53 +400,53 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionTitle(icon: Icons.person_add, title: 'Crear cliente'),
-                  const SizedBox(height: 12),
+                  SectionTitle(icon: Icons.person_add, title: 'Crear cliente'),
+                  SizedBox(height: 12),
                   AppTextField(controller: clientNameController, label: 'Nombre del cliente'),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   AppTextField(
                     controller: clientEmailController,
                     label: 'Email del cliente',
                     keyboardType: TextInputType.emailAddress,
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   AppTextField(
                     controller: clientGoalController,
                     label: 'Objetivo',
                     hint: 'Ej: Fuerza, pérdida de grasa...',
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: addClient,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Crear cliente y enviar acceso'),
+                      icon: Icon(Icons.add),
+                      label: Text('Crear cliente y enviar acceso'),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             TextField(
               onChanged: (value) => setState(() => searchText = value),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: Icon(Icons.search),
                 hintText: 'Buscar cliente',
                 filled: true,
-                fillColor: const Color(0xFF0F172A),
+                fillColor: context.gymSurface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: context.gymBorder),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return Center(child: CircularProgressIndicator());
                 }
 
                 final clients = (snapshot.data?.docs ?? []).where((doc) {
@@ -456,7 +456,7 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
                 }).toList();
 
                 if (clients.isEmpty) {
-                  return const AppCard(child: Text('No hay clientes que coincidan con la búsqueda.'));
+                  return AppCard(child: Text('No hay clientes que coincidan con la búsqueda.'));
                 }
 
                 return Column(
@@ -474,20 +474,20 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
                           Row(
                             children: [
                               ProfileAvatar(name: name),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                                    const SizedBox(height: 4),
-                                    Text(email, style: const TextStyle(color: Colors.white70)),
+                                    Text(name, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                                    SizedBox(height: 4),
+                                    Text(email, style: TextStyle(color: context.gymMutedText)),
                                   ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
@@ -499,23 +499,23 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
                                 InfoChip(text: 'Actualizado por ${data['updatedBy']}'),
                             ],
                           ),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                           Row(
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
                                   onPressed: () => editClient(doc.id, data),
-                                  icon: const Icon(Icons.edit),
-                                  label: const Text('Editar'),
+                                  icon: Icon(Icons.edit),
+                                  label: Text('Editar'),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 12),
                               Expanded(
                                 child: OutlinedButton.icon(
                                   style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
                                   onPressed: () => deleteClient(doc.id, data),
-                                  icon: const Icon(Icons.delete_outline),
-                                  label: const Text('Eliminar'),
+                                  icon: Icon(Icons.delete_outline),
+                                  label: Text('Eliminar'),
                                 ),
                               ),
                             ],
@@ -533,3 +533,6 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
     );
   }
 }
+
+
+

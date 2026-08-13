@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../widgets/app_card.dart';
 import '../widgets/app_text_field.dart';
@@ -111,7 +112,7 @@ class ClientGoalsPanel extends StatelessWidget {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF0F172A),
+              backgroundColor: context.gymSurface,
               title: Text(goalDoc == null ? 'Crear objetivo' : 'Editar objetivo'),
               content: SingleChildScrollView(
                 child: Column(
@@ -122,11 +123,11 @@ class ClientGoalsPanel extends StatelessWidget {
                       label: 'Objetivo',
                       hint: 'Ej: Bajar cintura a 85 cm',
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: selectedType,
-                      dropdownColor: const Color(0xFF0F172A),
-                      decoration: const InputDecoration(
+                      initialValue: selectedType,
+                      dropdownColor: context.gymSurface,
+                      decoration: InputDecoration(
                         labelText: 'Tipo de objetivo',
                         border: OutlineInputBorder(),
                       ),
@@ -141,13 +142,13 @@ class ClientGoalsPanel extends StatelessWidget {
                         setDialogState(() => selectedType = value);
                       },
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     AppTextField(
                       controller: targetController,
                       label: 'Valor objetivo',
                       hint: 'Ej: 85, 80 kg, 10 reps...',
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     AppTextField(
                       controller: notesController,
                       label: 'Notas',
@@ -159,7 +160,7 @@ class ClientGoalsPanel extends StatelessWidget {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancelar'),
+                  child: Text('Cancelar'),
                 ),
                 FilledButton.icon(
                   onPressed: () {
@@ -178,8 +179,8 @@ class ClientGoalsPanel extends StatelessWidget {
                       'notes': notesController.text.trim(),
                     });
                   },
-                  icon: const Icon(Icons.save),
-                  label: const Text('Guardar'),
+                  icon: Icon(Icons.save),
+                  label: Text('Guardar'),
                 ),
               ],
             );
@@ -284,19 +285,19 @@ class ClientGoalsPanel extends StatelessWidget {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF0F172A),
-          title: const Text('Eliminar objetivo'),
+          backgroundColor: context.gymSurface,
+          title: Text('Eliminar objetivo'),
           content: Text('¿Seguro que quieres eliminar "$title"? Esta acción no se puede deshacer.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancelar'),
+              child: Text('Cancelar'),
             ),
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Eliminar'),
+              icon: Icon(Icons.delete_outline),
+              label: Text('Eliminar'),
             ),
           ],
         );
@@ -342,7 +343,7 @@ class ClientGoalsPanel extends StatelessWidget {
     final normalizedEmail = clientEmail.trim().toLowerCase();
 
     if (normalizedEmail.isEmpty) {
-      return const AppCard(
+      return AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -350,7 +351,7 @@ class ClientGoalsPanel extends StatelessWidget {
             SizedBox(height: 12),
             Text(
               'El cliente seleccionado no tiene email asociado. Añade el email del cliente para poder gestionar objetivos.',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: context.gymMutedText),
             ),
           ],
         ),
@@ -361,7 +362,7 @@ class ClientGoalsPanel extends StatelessWidget {
       stream: goalsRef.where('clientEmail', isEqualTo: normalizedEmail).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppCard(
+          return AppCard(
             child: Center(child: CircularProgressIndicator()),
           );
         }
@@ -384,10 +385,10 @@ class ClientGoalsPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SectionTitle(icon: Icons.flag, title: 'Objetivos del cliente'),
-              const SizedBox(height: 8),
-              Text('$clientName · $normalizedEmail', style: const TextStyle(color: Colors.white70)),
-              const SizedBox(height: 12),
+              SectionTitle(icon: Icons.flag, title: 'Objetivos del cliente'),
+              SizedBox(height: 8),
+              Text('$clientName · $normalizedEmail', style: TextStyle(color: context.gymMutedText)),
+              SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -397,20 +398,20 @@ class ClientGoalsPanel extends StatelessWidget {
                   if (goals.isNotEmpty) InfoChip(text: '${goals.length - completed} pendientes'),
                 ],
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: () => showGoalDialog(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Crear objetivo'),
+                  icon: Icon(Icons.add),
+                  label: Text('Crear objetivo'),
                 ),
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               if (goals.isEmpty)
-                const Text(
+                Text(
                   'Todavía no hay objetivos definidos para este cliente.',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: context.gymMutedText),
                 )
               else
                 ...goals.map((goalDoc) {
@@ -425,16 +426,16 @@ class ClientGoalsPanel extends StatelessWidget {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF020617),
+                      color: context.gymSubtleSurface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: completed ? Colors.greenAccent.withOpacity(0.35) : Colors.white10),
+                      border: Border.all(color: completed ? context.gymPrimary.withValues(alpha: 0.35) : context.gymBorder),
                     ),
                     child: ListTile(
                       leading: IconButton(
                         onPressed: () => toggleGoalCompleted(goalDoc, !completed),
                         icon: Icon(
                           completed ? Icons.check_circle : Icons.radio_button_unchecked,
-                          color: completed ? Colors.greenAccent : Colors.white54,
+                          color: completed ? context.gymPrimary : context.gymMutedText.withValues(alpha: 0.85),
                         ),
                       ),
                       title: Text(
@@ -442,7 +443,7 @@ class ClientGoalsPanel extends StatelessWidget {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           decoration: completed ? TextDecoration.lineThrough : TextDecoration.none,
-                          color: completed ? Colors.greenAccent : Colors.white,
+                          color: completed ? context.gymPrimary : context.gymText,
                         ),
                       ),
                       subtitle: Padding(
@@ -464,8 +465,8 @@ class ClientGoalsPanel extends StatelessWidget {
                               ],
                             ),
                             if (notes.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(notes, style: const TextStyle(color: Colors.white70)),
+                              SizedBox(height: 6),
+                              Text(notes, style: TextStyle(color: context.gymMutedText)),
                             ],
                           ],
                         ),
@@ -476,12 +477,12 @@ class ClientGoalsPanel extends StatelessWidget {
                           IconButton(
                             tooltip: 'Editar objetivo',
                             onPressed: () => showGoalDialog(context, goalDoc: goalDoc),
-                            icon: const Icon(Icons.edit, color: Colors.greenAccent),
+                            icon: Icon(Icons.edit, color: context.gymPrimary),
                           ),
                           IconButton(
                             tooltip: 'Eliminar objetivo',
                             onPressed: () => deleteGoal(context, goalDoc),
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                            icon: Icon(Icons.delete_outline, color: Colors.redAccent),
                           ),
                         ],
                       ),
@@ -495,3 +496,6 @@ class ClientGoalsPanel extends StatelessWidget {
     );
   }
 }
+
+
+
