@@ -929,32 +929,6 @@ class _DashboardHeader extends StatelessWidget {
   }
 }
 
-class _MeasureCard extends StatelessWidget {
-  final String value;
-  final String unit;
-  final String label;
-
-  const _MeasureCard({required this.value, required this.unit, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: context.gymSubtleSurface, borderRadius: BorderRadius.circular(18), border: Border.all(color: context.gymBorder)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, height: 1.0, color: context.gymText)),
-          SizedBox(height: 2),
-          Text(unit, style: TextStyle(color: context.gymFitnessAccent, fontWeight: FontWeight.w900, fontSize: 12)),
-          SizedBox(height: 7),
-          Text(label, style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
-}
-
 class _RankingLite {
   final String userId;
   final String userEmail;

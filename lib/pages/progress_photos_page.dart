@@ -509,6 +509,9 @@ class _ProgressPhotosPanelState extends State<ProgressPhotosPanel> {
           afterPhoto = orderedPhotos.last.id == beforePhoto.id ? orderedPhotos.first : orderedPhotos.last;
         }
 
+        final comparisonBeforePhoto = beforePhoto;
+        final comparisonAfterPhoto = afterPhoto;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -571,7 +574,7 @@ class _ProgressPhotosPanelState extends State<ProgressPhotosPanel> {
               ),
             ),
             SizedBox(height: 16),
-            if (beforePhoto != null && afterPhoto != null)
+            if (comparisonBeforePhoto != null && comparisonAfterPhoto != null)
               AppCard(
                 margin: const EdgeInsets.only(bottom: 16),
                 child: Column(
@@ -591,7 +594,7 @@ class _ProgressPhotosPanelState extends State<ProgressPhotosPanel> {
                     ),
                     SizedBox(height: 6),
                     Text(
-                      '${service.formatDate(beforePhoto.data()['createdAt'])}  →  ${service.formatDate(afterPhoto.data()['createdAt'])}',
+                      '${service.formatDate(comparisonBeforePhoto.data()['createdAt'])}  →  ${service.formatDate(comparisonAfterPhoto.data()['createdAt'])}',
                       style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                     SizedBox(height: 12),
@@ -600,14 +603,14 @@ class _ProgressPhotosPanelState extends State<ProgressPhotosPanel> {
                       runSpacing: 8,
                       children: [
                         OutlinedButton.icon(
-                          onPressed: () => selectComparisonPhoto(before: true, photos: orderedPhotos, currentSelectedId: beforePhoto?.id),
+                          onPressed: () => selectComparisonPhoto(before: true, photos: orderedPhotos, currentSelectedId: comparisonBeforePhoto.id),
                           icon: Icon(Icons.looks_one),
-                          label: Text('Antes: ${service.formatDate(beforePhoto.data()['createdAt'])}'),
+                          label: Text('Antes: ${service.formatDate(comparisonBeforePhoto.data()['createdAt'])}'),
                         ),
                         OutlinedButton.icon(
-                          onPressed: () => selectComparisonPhoto(before: false, photos: orderedPhotos, currentSelectedId: afterPhoto?.id),
+                          onPressed: () => selectComparisonPhoto(before: false, photos: orderedPhotos, currentSelectedId: comparisonAfterPhoto.id),
                           icon: Icon(Icons.looks_two),
-                          label: Text('Ahora: ${service.formatDate(afterPhoto.data()['createdAt'])}'),
+                          label: Text('Ahora: ${service.formatDate(comparisonAfterPhoto.data()['createdAt'])}'),
                         ),
                         OutlinedButton.icon(
                           onPressed: swapComparisonPhotos,
@@ -621,8 +624,8 @@ class _ProgressPhotosPanelState extends State<ProgressPhotosPanel> {
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 760),
                         child: BeforeAfterSlider(
-                          beforeImageUrl: beforePhoto.data()['imageUrl']?.toString() ?? '',
-                          afterImageUrl: afterPhoto.data()['imageUrl']?.toString() ?? '',
+                          beforeImageUrl: comparisonBeforePhoto.data()['imageUrl']?.toString() ?? '',
+                          afterImageUrl: comparisonAfterPhoto.data()['imageUrl']?.toString() ?? '',
                           beforeLabel: 'ANTES',
                           afterLabel: 'AHORA',
                         ),
@@ -633,7 +636,7 @@ class _ProgressPhotosPanelState extends State<ProgressPhotosPanel> {
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          onPressed: sharing ? null : () => shareTransformation(beforePhoto: beforePhoto!, afterPhoto: afterPhoto!),
+                          onPressed: sharing ? null : () => shareTransformation(beforePhoto: comparisonBeforePhoto, afterPhoto: comparisonAfterPhoto),
                           icon: sharing
                               ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                               : Icon(Icons.share),
