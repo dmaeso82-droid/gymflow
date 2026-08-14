@@ -84,11 +84,11 @@ class HallOfFamePage extends StatelessWidget {
       duelsRef.get(),
     ]);
 
-    final leaderboardSnapshot = results[0] as QuerySnapshot<Map<String, dynamic>>;
-    final statsSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
-    final achievementsSnapshot = results[2] as QuerySnapshot<Map<String, dynamic>>;
-    final challengesSnapshot = results[3] as QuerySnapshot<Map<String, dynamic>>;
-    final duelsSnapshot = results[4] as QuerySnapshot<Map<String, dynamic>>;
+    final leaderboardSnapshot = results[0];
+    final statsSnapshot = results[1];
+    final achievementsSnapshot = results[2];
+    final challengesSnapshot = results[3];
+    final duelsSnapshot = results[4];
 
     final allTimePoints = <String, int>{};
     final pointsEntries = <_FameEntry>[];
