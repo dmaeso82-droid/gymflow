@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_card.dart';
 import '../features/user_dashboard.dart';
+import '../services/points_service.dart';
 import 'user_achievements_page.dart';
 import 'user_calendar_page.dart';
 import 'user_goals_page.dart';
@@ -18,8 +19,11 @@ import 'rankings_page.dart';
 import 'hall_of_fame_page.dart';
 import 'conversations_page.dart';
 import 'user_routines_page.dart';
+import 'progress_photos_page.dart';
 
 part 'user_home/next_step_card.dart';
+part 'user_home/onboarding_checklist_card.dart';
+part 'user_home/adaptive_home_sections.dart';
 part 'user_home/primary_actions_card.dart';
 part 'user_home/secondary_actions_card.dart';
 part 'user_home/home_header.dart';
@@ -193,6 +197,9 @@ class UserHomePage extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
                   child: _HomeHeader(
+                    gymId: gymId,
+                    userId: userId,
+                    userEmail: userEmail,
                     name: firstName(),
                     onSettings: () => openPage(context, SettingsPage(userEmail: userEmail)),
                   ),
@@ -211,16 +218,26 @@ class UserHomePage extends StatelessWidget {
                       onOpenRanking: () => openPage(context, RankingsPage(gymId: gymId, currentUserId: userId, currentUserName: userName, currentUserEmail: userEmail)),
                     ),
                     SizedBox(height: 12),
-                    _PrimaryActionsCard(actions: primaryActions),
-                    SizedBox(height: 12),
-                    UserDashboard(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail),
-                    SizedBox(height: 12),
-                    _SecondaryActionsCard(actions: actions),
-                    SizedBox(height: 12),
-                    _HomeActivityFeed(
+                    _OnboardingChecklistCard(
                       gymId: gymId,
                       userId: userId,
+                      userName: userName,
                       userEmail: userEmail,
+                      onOpenProfile: () => openPage(context, SettingsPage(userEmail: userEmail)),
+                      onOpenPhotos: () => openPage(context, ProgressPhotosPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+                      onOpenRoutines: () => openPage(context, UserRoutinesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+                      onOpenGoals: () => openPage(context, UserGoalsPage(gymId: gymId, userEmail: userEmail)),
+                      onOpenChallenges: () => openPage(context, ChallengesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+                      onOpenRecords: () => openPage(context, UserRecordsPage(gymId: gymId, userId: userId)),
+                    ),
+                    SizedBox(height: 12),
+                    _AdaptiveHomeSections(
+                      gymId: gymId,
+                      userId: userId,
+                      userName: userName,
+                      userEmail: userEmail,
+                      primaryActions: primaryActions,
+                      secondaryActions: actions,
                       onOpenCommunity: () => openPage(
                         context,
                         CommunityPage(gymId: gymId, currentUserId: userId, currentUserName: userName, currentUserEmail: userEmail),

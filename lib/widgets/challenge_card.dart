@@ -30,31 +30,31 @@ class TrainerChallengeCard extends StatelessWidget {
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      radius: 24,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Colors.amberAccent.withValues(alpha: context.gymIsDark ? 0.14 : 0.18),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.22)),
-                ),
-                child: Icon(service.challengeIcon(type), color: Colors.amber.shade700),
-              ),
+              _ChallengeIconBox(icon: service.challengeIcon(type), active: active),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900)),
+                        ),
+                        _ChallengeStatusPill(active: active),
+                      ],
+                    ),
                     if (description.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(description, style: TextStyle(color: context.gymMutedText)),
+                      const SizedBox(height: 5),
+                      Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymMutedText, fontSize: 12.5, fontWeight: FontWeight.w700)),
                     ],
                   ],
                 ),
@@ -65,14 +65,8 @@ class TrainerChallengeCard extends StatelessWidget {
                   if (value == 'toggle') onToggleActive(!active);
                 },
                 itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: 'toggle',
-                    child: Text(active ? 'Desactivar' : 'Activar'),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Eliminar'),
-                  ),
+                  PopupMenuItem(value: 'toggle', child: Text(active ? 'Desactivar' : 'Activar')),
+                  const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
                 ],
               ),
             ],
@@ -82,10 +76,10 @@ class TrainerChallengeCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ChallengeChip(text: service.challengeTypeLabel(type)),
-              ChallengeChip(text: '${service.formatCompact(target)} ${service.challengeUnit(type)}'),
-              ChallengeChip(text: active ? 'Activo' : 'Inactivo'),
-              ChallengeChip(text: 'Creado ${service.formatDate(data['createdAt'])}'),
+              ChallengeChip(icon: service.challengeIcon(type), text: service.challengeTypeLabel(type)),
+              ChallengeChip(icon: Icons.flag_rounded, text: '${service.formatCompact(target)} ${service.challengeUnit(type)}'),
+              ChallengeChip(icon: active ? Icons.flash_on_rounded : Icons.pause_rounded, text: active ? 'Activo' : 'Inactivo'),
+              ChallengeChip(icon: Icons.schedule_rounded, text: 'Creado ${service.formatDate(data['createdAt'])}'),
             ],
           ),
         ],
@@ -122,38 +116,57 @@ class UserChallengeCard extends StatelessWidget {
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      radius: 24,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ProfileAvatar(name: userName, size: 42),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ProfileAvatar(name: userName, size: 44),
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: context.gymSurface,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: context.gymBorder),
+                      ),
+                      child: Icon(completed ? Icons.check_rounded : service.challengeIcon(type), color: progressColor, size: 15),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 3),
-                    Text(
-                      service.challengeTypeLabel(type),
-                      style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w700),
+                    Row(
+                      children: [
+                        Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900))),
+                        _ProgressPercentPill(percent: percent, completed: completed),
+                      ],
                     ),
+                    const SizedBox(height: 4),
+                    Text(service.challengeTypeLabel(type), style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w800, fontSize: 12.5)),
                     if (description.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(description, style: TextStyle(color: context.gymMutedText)),
+                      Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymMutedText, fontSize: 12.5, fontWeight: FontWeight.w700)),
                     ],
                   ],
                 ),
               ),
-              Icon(
-                completed ? Icons.emoji_events : service.challengeIcon(type),
-                color: progressColor,
-              ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 13),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
@@ -169,16 +182,100 @@ class UserChallengeCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   '${service.formatCompact(current)} / ${service.formatCompact(target)} ${service.challengeUnit(type)}',
-                  style: TextStyle(color: context.gymText, fontWeight: FontWeight.w800),
+                  style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900, fontSize: 13),
                 ),
               ),
-              Text('${(percent * 100).round()}%', style: TextStyle(color: context.gymMutedText)),
+              if (completed)
+                _CompletedChallengePill()
+              else
+                ChallengeChip(icon: Icons.flag_rounded, text: 'Objetivo'),
             ],
           ),
-          if (completed) ...[
-            const SizedBox(height: 8),
-            const Text('Reto completado', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w800)),
-          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ChallengeIconBox extends StatelessWidget {
+  final IconData icon;
+  final bool active;
+
+  const _ChallengeIconBox({required this.icon, required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? Colors.amberAccent : context.gymMutedText;
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: context.gymIsDark ? 0.14 : 0.18),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Icon(icon, color: active ? Colors.amber.shade700 : context.gymMutedText),
+    );
+  }
+}
+
+class _ChallengeStatusPill extends StatelessWidget {
+  final bool active;
+
+  const _ChallengeStatusPill({required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? context.gymPrimary : context.gymMutedText;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Text(active ? 'Activo' : 'Inactivo', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
+    );
+  }
+}
+
+class _ProgressPercentPill extends StatelessWidget {
+  final double percent;
+  final bool completed;
+
+  const _ProgressPercentPill({required this.percent, required this.completed});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = completed ? Colors.amberAccent : context.gymPrimary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Text('${(percent * 100).round()}%', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w900)),
+    );
+  }
+}
+
+class _CompletedChallengePill extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.amberAccent.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.24)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.emoji_events_rounded, color: Colors.amberAccent, size: 15),
+          SizedBox(width: 5),
+          Text('Completado', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w900, fontSize: 12)),
         ],
       ),
     );
@@ -187,8 +284,9 @@ class UserChallengeCard extends StatelessWidget {
 
 class ChallengeChip extends StatelessWidget {
   final String text;
+  final IconData? icon;
 
-  const ChallengeChip({super.key, required this.text});
+  const ChallengeChip({super.key, required this.text, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -199,9 +297,15 @@ class ChallengeChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: context.gymBorder),
       ),
-      child: Text(
-        text,
-        style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w700),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: context.gymPrimary),
+            const SizedBox(width: 5),
+          ],
+          Text(text, style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w800)),
+        ],
       ),
     );
   }

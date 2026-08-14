@@ -35,37 +35,75 @@ class _ProfileRankingPositions extends StatelessWidget {
         final monthly = positionFor(docs, 'monthlyPoints');
         final yearly = positionFor(docs, 'yearlyPoints');
         final allTime = positionFor(docs, 'allTimePoints');
-        if (monthly == 0 && yearly == 0 && allTime == 0) {
-          return AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _SectionHeader(icon: Icons.leaderboard, title: 'Posición en rankings'),
-                const SizedBox(height: 8),
-                Text('Todavía no hay puntos suficientes para calcular posición en ranking.', style: TextStyle(color: context.gymMutedText)),
-              ],
-            ),
-          );
-        }
+        final positions = <_RankingPositionData>[
+          if (monthly > 0) _RankingPositionData(icon: '📅', label: 'Mensual', position: monthly),
+          if (yearly > 0) _RankingPositionData(icon: '🏆', label: 'Anual', position: yearly),
+          if (allTime > 0) _RankingPositionData(icon: '⭐', label: 'Histórico', position: allTime),
+        ];
+
         return AppCard(
+          padding: const EdgeInsets.all(14),
+          radius: 24,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _SectionHeader(icon: Icons.leaderboard, title: 'Posición en rankings'),
+              const _SectionHeader(icon: Icons.leaderboard_rounded, title: 'Posición en rankings'),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (monthly > 0) _ProfileChip(text: '#$monthly mensual'),
-                  if (yearly > 0) _ProfileChip(text: '#$yearly anual'),
-                  if (allTime > 0) _ProfileChip(text: '#$allTime histórico'),
-                ],
-              ),
+              if (positions.isEmpty)
+                Text('Todavía no hay puntos suficientes para calcular posición en ranking.', style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w700))
+              else
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    const spacing = 8.0;
+                    final width = (constraints.maxWidth - spacing * (positions.length - 1).clamp(0, 2)) / positions.length.clamp(1, 3);
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: positions.map((item) => SizedBox(width: width, child: _RankingPositionCard(data: item))).toList(),
+                    );
+                  },
+                ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _RankingPositionData {
+  final String icon;
+  final String label;
+  final int position;
+
+  const _RankingPositionData({required this.icon, required this.label, required this.position});
+}
+
+class _RankingPositionCard extends StatelessWidget {
+  final _RankingPositionData data;
+
+  const _RankingPositionCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final medal = data.position == 1 ? '🥇' : data.position == 2 ? '🥈' : data.position == 3 ? '🥉' : '#${data.position}';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.gymSubtleSurface.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.gymBorder.withValues(alpha: 0.78)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(data.icon, style: const TextStyle(fontSize: 19)),
+          const SizedBox(height: 8),
+          Text(medal, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymPrimary, fontSize: 22, fontWeight: FontWeight.w900, height: 1)),
+          const SizedBox(height: 3),
+          Text(data.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w800)),
+        ],
+      ),
     );
   }
 }

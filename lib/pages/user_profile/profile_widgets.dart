@@ -14,25 +14,33 @@ class _ProfileMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: context.gymSubtleSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.gymBorder),
+        color: context.gymSubtleSurface.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: context.gymBorder.withValues(alpha: 0.8)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: context.gymPrimary, size: 20),
-          SizedBox(height: 8),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: context.gymPrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(icon, color: context.gymPrimary, size: 19),
+          ),
+          const SizedBox(height: 10),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            style: TextStyle(color: context.gymText, fontSize: 21, fontWeight: FontWeight.w900, height: 1),
           ),
-          SizedBox(height: 2),
-          Text(label, style: TextStyle(color: context.gymMutedText, fontSize: 12)),
+          const SizedBox(height: 3),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -49,9 +57,17 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: context.gymPrimary, size: 20),
-        SizedBox(width: 8),
-        Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: context.gymPrimary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, color: context.gymPrimary, size: 19),
+        ),
+        const SizedBox(width: 9),
+        Expanded(child: Text(title, style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900))),
       ],
     );
   }
@@ -59,8 +75,9 @@ class _SectionHeader extends StatelessWidget {
 
 class _ProfileChip extends StatelessWidget {
   final String text;
+  final IconData? icon;
 
-  const _ProfileChip({required this.text});
+  const _ProfileChip({required this.text, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -71,9 +88,15 @@ class _ProfileChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: context.gymFitnessAccent.withValues(alpha: 0.22)),
       ),
-      child: Text(
-        text,
-        style: TextStyle(color: context.gymPrimary, fontSize: 12, fontWeight: FontWeight.w800),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: context.gymPrimary),
+            const SizedBox(width: 5),
+          ],
+          Text(text, style: TextStyle(color: context.gymPrimary, fontSize: 12, fontWeight: FontWeight.w900)),
+        ],
       ),
     );
   }

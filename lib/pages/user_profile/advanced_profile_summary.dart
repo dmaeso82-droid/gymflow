@@ -40,6 +40,10 @@ class _AdvancedProfileSummary extends StatelessWidget {
     return base.where('userEmail', isEqualTo: userEmail.trim().toLowerCase());
   }
 
+  int levelFromPoints(int points) => (points ~/ 500) + 1;
+  int pointsInsideLevel(int points) => points % 500;
+  double levelProgress(int points) => (pointsInsideLevel(points) / 500).clamp(0.0, 1.0);
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -51,6 +55,9 @@ class _AdvancedProfileSummary extends StatelessWidget {
         final yearlyPoints = AppFormatters.intValue(leaderboard['yearlyPoints']);
         final points = allTimePoints > 0 ? allTimePoints : statsPoints;
         final prestige = prestigeForPoints(points);
+        final level = levelFromPoints(points);
+        final progress = levelProgress(points);
+        final levelPoints = pointsInsideLevel(points);
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: userScopedQuery(achievementsRef).snapshots(),
@@ -67,11 +74,61 @@ class _AdvancedProfileSummary extends StatelessWidget {
                   transformations: transformationCount,
                 );
                 return AppCard(
+                  padding: const EdgeInsets.all(14),
+                  radius: 26,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const _SectionHeader(icon: Icons.auto_awesome, title: 'Perfil DalaiGym'),
-                      const SizedBox(height: 10),
+                      const _SectionHeader(icon: Icons.auto_awesome_rounded, title: 'Perfil DalaiGym'),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          gradient: context.gymHeroGradient,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: context.gymFitnessAccent.withValues(alpha: 0.15)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _ProfileChip(icon: Icons.workspace_premium_rounded, text: 'Nivel $level'),
+                                _ProfileChip(icon: Icons.emoji_events_rounded, text: '$points puntos'),
+                                _ProfileChip(icon: Icons.military_tech_rounded, text: prestige.label),
+                                _ProfileChip(icon: Icons.auto_awesome_rounded, text: prestigeTitle.label),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$levelPoints / 500 pts para nivel ${level + 1}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                                Text('${(progress * 100).round()}%', style: TextStyle(color: context.gymPrimary, fontSize: 12, fontWeight: FontWeight.w900)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 8,
+                                backgroundColor: context.gymSubtleSurface.withValues(alpha: 0.72),
+                                valueColor: AlwaysStoppedAnimation<Color>(context.gymPrimary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final columns = constraints.maxWidth < 560 ? 2 : 3;
@@ -81,28 +138,16 @@ class _AdvancedProfileSummary extends StatelessWidget {
                             spacing: spacing,
                             runSpacing: spacing,
                             children: [
-                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.emoji_events, value: '$points', label: 'Puntos')),
-                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.military_tech, value: prestige.label, label: 'Nivel')),
-                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.auto_awesome, value: prestigeTitle.label, label: 'Título')),
-                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.local_fire_department, value: '$streak', label: 'Racha')),
-                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.workspace_premium, value: '$achievementCount', label: 'Logros')),
-                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.photo_library, value: '$photos', label: 'Fotos')),
-                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.compare, value: '$transformationCount', label: 'Cambios')),
+                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.local_fire_department_rounded, value: '$streak', label: 'Racha')),
+                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.workspace_premium_rounded, value: '$achievementCount', label: 'Logros')),
+                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.photo_library_rounded, value: '$photos', label: 'Fotos')),
+                              SizedBox(width: width, child: _ProfileMetric(icon: Icons.compare_rounded, value: '$transformationCount', label: 'Cambios')),
+                              if (monthlyPoints > 0) SizedBox(width: width, child: _ProfileMetric(icon: Icons.calendar_month_rounded, value: '$monthlyPoints', label: 'Pts mes')),
+                              if (yearlyPoints > 0) SizedBox(width: width, child: _ProfileMetric(icon: Icons.history_edu_rounded, value: '$yearlyPoints', label: 'Pts año')),
                             ],
                           );
                         },
                       ),
-                      if (monthlyPoints > 0 || yearlyPoints > 0) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _ProfileChip(text: '$monthlyPoints pts este mes'),
-                            _ProfileChip(text: '$yearlyPoints pts este año'),
-                          ],
-                        ),
-                      ],
                     ],
                   ),
                 );

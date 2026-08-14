@@ -531,7 +531,7 @@ class PodiumCard extends StatelessWidget {
               final columnIndex = item.key;
               final entry = item.value;
               final position = columnIndex == 1 ? 1 : columnIndex == 0 ? 2 : 3;
-              final height = position == 1 ? 132.0 : 112.0;
+              final height = position == 1 ? 118.0 : 102.0;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -556,20 +556,36 @@ class PodiumCard extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: position == 1 ? Colors.amberAccent.withValues(alpha: 0.14) : context.gymSubtleSurface,
                               borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: position == 1 ? Colors.amberAccent.withValues(alpha: 0.45) : context.gymBorder),
+                              border: Border.all(
+                                color: position == 1 ? Colors.amberAccent.withValues(alpha: 0.65) : context.gymBorder,
+                                width: position == 1 ? 2 : 1,
+                              ),
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(position == 1 ? '🥇' : position == 2 ? '🥈' : '🥉', style: const TextStyle(fontSize: 26)),
+                                Text(position == 1 ? '🥇' : position == 2 ? '🥈' : '🥉', style: TextStyle(fontSize: position == 1 ? 24 : 22)),
                                 const SizedBox(height: 6),
-                                ProfileAvatar(name: entry.userName, size: position == 1 ? 42 : 36),
+                                ProfileAvatar(name: entry.userName, size: position == 1 ? 36 : 32),
                                 const SizedBox(height: 6),
-                                Text('${entry.prestige.badge} ${entry.userName}', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900, fontSize: 12)),
+                                Text(entry.userName, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900, fontSize: 11.5)),
                                 const SizedBox(height: 3),
-                                Text(entry.prestigeTitle.label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w800, fontSize: 10.5)),
-                                const SizedBox(height: 2),
-                                Text(valueBuilder(entry), textAlign: TextAlign.center, style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w900, fontSize: 12)),
+                                Text(valueBuilder(entry), textAlign: TextAlign.center, style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w900, fontSize: position == 1 ? 18 : 16)),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: context.gymPrimary.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    entry.prestigeTitle.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w900, fontSize: 10),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -692,7 +708,15 @@ class RankingTile extends StatelessWidget {
             ),
           ),
           SizedBox(width: 10),
-          Text(value, textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.w900, color: context.gymPrimary)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: context.gymPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: context.gymPrimary.withValues(alpha: 0.16)),
+            ),
+            child: Text(value, textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.w900, color: context.gymPrimary, fontSize: 13)),
+          ),
         ],
       ),
     );

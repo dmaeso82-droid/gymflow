@@ -150,9 +150,21 @@ class UserAchievementsPanel extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SectionTitle(icon: Icons.military_tech, title: 'Logros'),
+                  SectionTitle(icon: Icons.military_tech, title: 'Logros y progreso'),
                   SizedBox(height: 12),
-                  Wrap(
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: context.gymPrimary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: context.gymPrimary.withValues(alpha: 0.12)),
+                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children:[
+                      Text('${unlocked.length}/${achievements.length} logros desbloqueados', style: TextStyle(fontWeight: FontWeight.w900,color: context.gymText)),
+                      SizedBox(height:8),
+                      ClipRRect(borderRadius: BorderRadius.circular(999), child: LinearProgressIndicator(value: achievements.isEmpty ? 0 : unlocked.length/achievements.length, minHeight: 8)),
+                      SizedBox(height:10),
+                      Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
@@ -160,7 +172,8 @@ class UserAchievementsPanel extends StatelessWidget {
                       InfoChip(text: '${stats.workouts} entrenos'),
                       InfoChip(text: '${stats.volume} kg movidos'),
                       if (locked.isNotEmpty) InfoChip(text: 'Siguiente: ${locked.first.title}'),
-                    ],
+                    ]),
+                    ]),
                   ),
                   SizedBox(height: 14),
                   if (visible.isEmpty)
@@ -189,17 +202,17 @@ class AchievementTile extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: context.gymSurface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: unlocked ? achievement.color.withValues(alpha: 0.35) : context.gymBorder),
       ),
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 50,
+            height: 50,
             decoration: BoxDecoration(
               color: (unlocked ? achievement.color : context.gymMutedText).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
@@ -237,7 +250,7 @@ class AchievementTile extends StatelessWidget {
                 ),
                 SizedBox(height: 6),
                 Text(
-                  unlocked ? 'Desbloqueado' : '${achievement.current}/${achievement.target}',
+                  unlocked ? '✅ Desbloqueado' : '🎯 ${achievement.current}/${achievement.target}',
                   style: TextStyle(color: context.gymMutedText, fontSize: 11),
                 ),
               ],

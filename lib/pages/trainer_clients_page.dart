@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -141,9 +142,9 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       await secondaryAuth.signOut();
       return credential;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'email-already-in-use') {
-        return null;
-      }
+      debugPrint('FIREBASE AUTH ERROR al crear cliente');
+      debugPrint('CODE: ${e.code}');
+      debugPrint('MESSAGE: ${e.message}');
       rethrow;
     } finally {
       await secondaryApp?.delete();
@@ -181,14 +182,25 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
         password: tempPassword,
       );
     } on FirebaseAuthException catch (e) {
-      showSnack('No se pudo crear la cuenta de acceso: ${e.code}');
+      debugPrint('FIREBASE AUTH ERROR al crear cliente');
+      debugPrint('CODE: ${e.code}');
+      debugPrint('MESSAGE: ${e.message}');
+      final message = e.code == 'email-already-in-use'
+          ? 'Ese email ya existe en Firebase Authentication. Borra esa cuenta en Firebase Auth o usa otro correo.'
+          : 'No se pudo crear la cuenta de acceso: ${e.code}';
+      showSnack(message);
       return;
     } catch (e) {
+      debugPrint('ERROR GENERAL al crear cliente: $e');
       showSnack('No se pudo crear la cuenta de acceso: $e');
       return;
     }
 
     final uid = createdCredential?.user?.uid;
+    if (uid == null || uid.isEmpty) {
+      showSnack('No se creó la cuenta en Firebase Authentication. No se guardará el cliente.');
+      return;
+    }
     final actor = await currentActor();
     final db = FirebaseFirestore.instance;
     final batch = db.batch();
@@ -199,13 +211,12 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
       'email': email,
       'goal': goal.isEmpty ? 'Objetivo pendiente' : goal,
       'level': 'Nuevo',
-      'authUid': uid ?? '',
-      'accountStatus': uid == null ? 'existing_auth_user' : 'invited',
+      'authUid': uid,
+      'accountStatus': 'invited',
       ...auditCreateFields(actor),
     });
 
-    if (uid != null) {
-      batch.set(db.collection('users').doc(uid), {
+    batch.set(db.collection('users').doc(uid), {
         'name': name,
         'email': email,
         'role': 'user',
@@ -218,7 +229,7 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      batch.set(db.collection('gyms').doc(widget.gymId).collection('members').doc(uid), {
+    batch.set(db.collection('gyms').doc(widget.gymId).collection('members').doc(uid), {
         'name': name,
         'email': email,
         'role': 'user',
@@ -228,7 +239,6 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-    }
 
     batch.set(activityRef.doc(), activityFields(
       type: 'client_created',
@@ -347,9 +357,141 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
     showSnack('Cliente actualizado. Rutinas asociadas sincronizadas.');
   }
 
+  String firestoreSafeKey(String value) {
+    return value.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  }
+
+  CollectionReference<Map<String, dynamic>> gymCollection(String name) {
+    return FirebaseFirestore.instance.collection('gyms').doc(widget.gymId).collection(name);
+  }
+
+  Future<int> deleteQueryDocuments(Query<Map<String, dynamic>> query) async {
+    try {
+      final snapshot = await query.get();
+      var deleted = 0;
+      for (final doc in snapshot.docs) {
+        await doc.reference.delete();
+        deleted++;
+      }
+      return deleted;
+    } catch (error) {
+      debugPrint('No se pudo limpiar una consulta relacionada con cliente: $error');
+      return 0;
+    }
+  }
+
+  Future<int> deleteDocumentIfExists(DocumentReference<Map<String, dynamic>> ref) async {
+    try {
+      final snapshot = await ref.get();
+      if (!snapshot.exists) return 0;
+      await ref.delete();
+      return 1;
+    } catch (error) {
+      debugPrint('No se pudo eliminar documento relacionado con cliente: $error');
+      return 0;
+    }
+  }
+
+  Future<int> deleteProgressPhotosForClient({required String authUid, required String email}) async {
+    final deletedPhotoIds = <String>{};
+    var deleted = 0;
+
+    Future<void> deletePhotosFromQuery(Query<Map<String, dynamic>> query) async {
+      try {
+        final snapshot = await query.get();
+        for (final doc in snapshot.docs) {
+          if (!deletedPhotoIds.add(doc.id)) continue;
+          final data = doc.data();
+          final storagePath = data['storagePath']?.toString() ?? '';
+          if (storagePath.isNotEmpty) {
+            try {
+              await FirebaseStorage.instance.ref(storagePath).delete();
+            } catch (error) {
+              debugPrint('No se pudo eliminar imagen de Storage: $error');
+            }
+          }
+          await doc.reference.delete();
+          deleted++;
+        }
+      } catch (error) {
+        debugPrint('No se pudieron limpiar fotos de progreso del cliente: $error');
+      }
+    }
+
+    if (authUid.isNotEmpty) {
+      await deletePhotosFromQuery(gymCollection('progress_photos').where('userId', isEqualTo: authUid));
+    }
+    if (email.isNotEmpty) {
+      await deletePhotosFromQuery(gymCollection('progress_photos').where('userEmail', isEqualTo: email));
+    }
+    return deleted;
+  }
+
+  Future<int> deleteClientRelatedData({
+    required String clientId,
+    required Map<String, dynamic> clientData,
+  }) async {
+    final authUid = clientData['authUid']?.toString().trim() ?? '';
+    final email = (clientData['email'] ?? '').toString().trim().toLowerCase();
+    final emailKey = email.isEmpty ? '' : firestoreSafeKey(email);
+    var deleted = 0;
+
+    if (authUid.isNotEmpty) {
+      deleted += await deleteDocumentIfExists(FirebaseFirestore.instance.collection('users').doc(authUid));
+      deleted += await deleteDocumentIfExists(gymCollection('members').doc(authUid));
+    }
+
+    final knownDocKeys = <String>{
+      clientId,
+      if (authUid.isNotEmpty) authUid,
+      if (emailKey.isNotEmpty) emailKey,
+    };
+
+    for (final key in knownDocKeys) {
+      deleted += await deleteDocumentIfExists(gymCollection('user_stats').doc(key));
+      deleted += await deleteDocumentIfExists(gymCollection('leaderboard').doc(key));
+      deleted += await deleteDocumentIfExists(gymCollection('ranking_stats').doc(key));
+      deleted += await deleteDocumentIfExists(gymCollection('progress_photo_settings').doc(key));
+    }
+
+    deleted += await deleteProgressPhotosForClient(authUid: authUid, email: email);
+
+    final collectionsToClean = [
+      'workout_logs',
+      'goals',
+      'measurements',
+      'user_achievements',
+      'points_ledger',
+      'notifications',
+      'community_posts',
+      'ranking_stats',
+      'leaderboard',
+      'user_stats',
+      'progress_photo_settings',
+      'routines',
+    ];
+
+    for (final collectionName in collectionsToClean) {
+      final collection = gymCollection(collectionName);
+      deleted += await deleteQueryDocuments(collection.where('clientId', isEqualTo: clientId));
+      if (authUid.isNotEmpty) {
+        deleted += await deleteQueryDocuments(collection.where('userId', isEqualTo: authUid));
+        deleted += await deleteQueryDocuments(collection.where('authUid', isEqualTo: authUid));
+      }
+      if (email.isNotEmpty) {
+        deleted += await deleteQueryDocuments(collection.where('email', isEqualTo: email));
+        deleted += await deleteQueryDocuments(collection.where('userEmail', isEqualTo: email));
+        deleted += await deleteQueryDocuments(collection.where('clientEmail', isEqualTo: email));
+        deleted += await deleteQueryDocuments(collection.where('targetEmail', isEqualTo: email));
+      }
+    }
+
+    return deleted;
+  }
+
   Future<void> deleteClient(String clientId, Map<String, dynamic> clientData) async {
     final clientName = clientData['name']?.toString() ?? 'este cliente';
-
+    final clientEmail = (clientData['email'] ?? '').toString().trim().toLowerCase();
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -357,7 +499,7 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
           backgroundColor: context.gymSurface,
           title: Text('Eliminar cliente'),
           content: Text(
-            '¿Seguro que quieres eliminar a $clientName? No se eliminarán sus rutinas ni sus entrenamientos, solo la ficha del cliente.',
+            '¿Seguro que quieres eliminar a $clientName? Se eliminará su ficha y también sus datos asociados en Firestore: rutinas, entrenamientos, objetivos, medidas, fotos, logros, puntos, ranking y notificaciones. Esta acción no elimina automáticamente la cuenta de Firebase Authentication.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('Cancelar')),
@@ -365,27 +507,33 @@ class _TrainerClientsPageState extends State<TrainerClientsPage> {
               style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(dialogContext, true),
               icon: Icon(Icons.delete_outline),
-              label: Text('Eliminar'),
+              label: Text('Eliminar todo'),
             ),
           ],
         );
       },
     );
-
     if (confirm != true) return;
 
     final actor = await currentActor();
+    final deletedRelatedDocs = await deleteClientRelatedData(clientId: clientId, clientData: clientData);
+
     final batch = FirebaseFirestore.instance.batch();
     batch.delete(clientsRef.doc(clientId));
     batch.set(activityRef.doc(), activityFields(
       type: 'client_deleted',
       target: clientName,
       targetId: clientId,
-      targetEmail: clientData['email']?.toString(),
+      targetEmail: clientEmail,
       actor: actor,
+      metadata: {
+        'deletedRelatedDocs': deletedRelatedDocs,
+        'authUid': clientData['authUid']?.toString() ?? '',
+        'hardDelete': true,
+      },
     ));
     await batch.commit();
-    showSnack('Cliente eliminado. Sus rutinas y entrenamientos se han conservado.');
+    showSnack('Cliente eliminado. También se han limpiado $deletedRelatedDocs documentos asociados.');
   }
 
   @override

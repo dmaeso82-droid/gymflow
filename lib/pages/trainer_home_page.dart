@@ -26,6 +26,7 @@ part 'trainer_home/trainer_recent_activity_card.dart';
 part 'trainer_home/trainer_stats_grid.dart';
 part 'trainer_home/trainer_quick_actions.dart';
 part 'trainer_home/trainer_bottom_nav.dart';
+part 'trainer_home/trainer_onboarding_checklist_card.dart';
 
 class TrainerHomePage extends StatelessWidget {
   final String gymId;
@@ -144,6 +145,16 @@ class TrainerHomePage extends StatelessWidget {
                       onOpenRoutineForClient: (clientId, clientName) => openPage(context, TrainerRoutinesPage(gymId: gymId, initialClientId: clientId, initialClientName: clientName, focusCreation: true)),
                       onOpenGoals: () => openPage(context, TrainerGoalsPage(gymId: gymId)),
                       onOpenTrainers: () => openPage(context, TrainerTrainersPage(gymId: gymId, trainerRole: trainerRole)),
+                    ),
+                    const SizedBox(height: 12),
+                    _TrainerOnboardingChecklistCard(
+                      gymId: gymId,
+                      trainerName: trainerName,
+                      onOpenClients: () => openPage(context, TrainerClientsPage(gymId: gymId)),
+                      onOpenRoutines: () => openPage(context, TrainerRoutinesPage(gymId: gymId)),
+                      onOpenGoals: () => openPage(context, TrainerGoalsPage(gymId: gymId)),
+                      onOpenProgress: () => openPage(context, TrainerProgressPage(gymId: gymId)),
+                      onOpenTraining: () => openMyTraining(context),
                     ),
                     const SizedBox(height: 12),
                     Row(

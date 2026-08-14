@@ -40,39 +40,65 @@ class TopRankingPreview extends StatelessWidget {
         }
         final entries = map.values.toList()..sort((a, b) => b.series.compareTo(a.series));
         return AppCard(
+          padding: const EdgeInsets.all(14),
+          radius: 24,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(Icons.leaderboard, color: context.gymFitnessAccent),
-                  SizedBox(width: 8),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.amberAccent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.leaderboard_rounded, color: Colors.amberAccent),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(child: Text('Top DalaiGym esta semana', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: context.gymText))),
                   TextButton(
                     onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RankingsPage(gymId: gymId, currentUserId: currentUserId, currentUserName: currentUserName, currentUserEmail: currentUserEmail))),
-                    child: Text('Ver'),
+                    child: const Text('Ver'),
                   ),
                 ],
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               if (entries.isEmpty)
-                Text('Aún no hay series registradas esta semana.', style: TextStyle(color: context.gymMutedText))
+                Text('Aún no hay series registradas esta semana.', style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w700))
               else
-                ...entries.take(3).toList().asMap().entries.map((item) {
-                  final index = item.key;
-                  final entry = item.value;
-                  final medal = index == 0 ? '🥇' : index == 1 ? '🥈' : '🥉';
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(width: 30, child: Text(medal, style: TextStyle(fontSize: 18))),
-                        Expanded(child: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800))),
-                        Text('${entry.series} series', style: TextStyle(color: context.gymFitnessAccent, fontWeight: FontWeight.w900)),
-                      ],
-                    ),
-                  );
-                }),
+                Column(
+                  children: entries.take(3).toList().asMap().entries.map((item) {
+                    final index = item.key;
+                    final entry = item.value;
+                    final medal = index == 0 ? '🥇' : index == 1 ? '🥈' : '🥉';
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: context.gymSubtleSurface.withValues(alpha: 0.78),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: context.gymBorder.withValues(alpha: 0.78)),
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(width: 34, child: Text(medal, style: const TextStyle(fontSize: 21))),
+                          Expanded(child: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900))),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: context.gymPrimary.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: context.gymPrimary.withValues(alpha: 0.16)),
+                            ),
+                            child: Text('${entry.series} series', style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w900, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
             ],
           ),
         );

@@ -271,6 +271,12 @@ class _FameCategoryCard extends StatelessWidget {
 
   const _FameCategoryCard({required this.category, required this.onOpenProfile});
 
+  String rankLabel(int position) {
+    if (position == 2) return '🥈';
+    if (position == 3) return '🥉';
+    return '#$position';
+  }
+
   @override
   Widget build(BuildContext context) {
     final champion = category.entries.isEmpty ? null : category.entries.first;
@@ -284,9 +290,13 @@ class _FameCategoryCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(color: context.gymFitnessAccent.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(16)),
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: context.gymFitnessAccent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: context.gymFitnessAccent.withValues(alpha: 0.16)),
+                ),
                 child: Icon(category.icon, color: context.gymPrimary),
               ),
               const SizedBox(width: 10),
@@ -304,35 +314,58 @@ class _FameCategoryCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (champion == null)
-            Text('Todavía no hay datos suficientes para esta categoría.', style: TextStyle(color: context.gymMutedText))
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: context.gymSubtleSurface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: context.gymBorder),
+              ),
+              child: Text('Todavía no hay datos suficientes para esta categoría.', style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w700)),
+            )
           else ...[
             InkWell(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
               onTap: () => onOpenProfile(champion),
               child: Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(13),
                 decoration: BoxDecoration(
-                  color: Colors.amberAccent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.34)),
+                  color: Colors.amberAccent.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.55), width: 1.4),
                 ),
                 child: Row(
                   children: [
-                    const Text('👑', style: TextStyle(fontSize: 26)),
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.amberAccent.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Center(child: Text('👑', style: TextStyle(fontSize: 22))),
+                    ),
                     const SizedBox(width: 10),
-                    ProfileAvatar(name: champion.userName, size: 42),
+                    ProfileAvatar(name: champion.userName, size: 44),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${prestigeForPoints(champion.allTimePoints).badge} ${champion.userName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 3),
-                          Text(prestigeForPoints(champion.allTimePoints).label, style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w700)),
+                          Text(champion.userName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900, fontSize: 15)),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              _FameMetricPill(value: '${champion.value} ${category.unit}', prominent: true),
+                              _FamePrestigePill(label: '${prestigeForPoints(champion.allTimePoints).badge} ${prestigeForPoints(champion.allTimePoints).label}'),
+                            ],
+                          ),
                         ],
                       ),
                     ),
-                    Text('${champion.value} ${category.unit}', style: TextStyle(color: context.gymPrimary, fontSize: 16, fontWeight: FontWeight.w900)),
                   ],
                 ),
               ),
@@ -344,23 +377,34 @@ class _FameCategoryCard extends StatelessWidget {
               return InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () => onOpenProfile(entry),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: context.gymSubtleSurface.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: context.gymBorder.withValues(alpha: 0.72)),
+                  ),
                   child: Row(
                     children: [
-                      SizedBox(width: 34, child: Text('#$position', style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w900))),
+                      SizedBox(
+                        width: 34,
+                        child: Text(rankLabel(position), style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w900, fontSize: position <= 3 ? 20 : 13)),
+                      ),
                       ProfileAvatar(name: entry.userName, size: 34),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${prestigeForPoints(entry.allTimePoints).badge} ${entry.userName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800, color: context.gymText)),
-                            Text(prestigeForPoints(entry.allTimePoints).label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymMutedText, fontSize: 11, fontWeight: FontWeight.w700)),
+                            Text(entry.userName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w900, color: context.gymText)),
+                            const SizedBox(height: 2),
+                            Text('${prestigeForPoints(entry.allTimePoints).badge} ${prestigeForPoints(entry.allTimePoints).label}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymMutedText, fontSize: 11, fontWeight: FontWeight.w700)),
                           ],
                         ),
                       ),
-                      Text('${entry.value}', style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w900)),
+                      const SizedBox(width: 8),
+                      _FameMetricPill(value: '${entry.value}', prominent: false),
                     ],
                   ),
                 ),
@@ -368,6 +412,55 @@ class _FameCategoryCard extends StatelessWidget {
             }),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _FameMetricPill extends StatelessWidget {
+  final String value;
+  final bool prominent;
+
+  const _FameMetricPill({required this.value, required this.prominent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: prominent ? 12 : 10, vertical: prominent ? 7 : 5),
+      decoration: BoxDecoration(
+        color: context.gymPrimary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: context.gymPrimary.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        value,
+        style: TextStyle(
+          color: context.gymPrimary,
+          fontWeight: FontWeight.w900,
+          fontSize: prominent ? 16 : 12.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _FamePrestigePill extends StatelessWidget {
+  final String label;
+
+  const _FamePrestigePill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: context.gymSubtleSurface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: context.gymBorder.withValues(alpha: 0.72)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w900, fontSize: 11),
       ),
     );
   }

@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-
 import '../services/chat_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/profile_avatar.dart';
@@ -49,11 +48,27 @@ class ConversationsPage extends StatelessWidget {
     );
   }
 
+  String roleLabel(String role) {
+    if (role == 'trainer') return 'Entrenador';
+    return 'Cliente';
+  }
+
+  String formatTime(dynamic value) {
+    if (value is Timestamp) {
+      final date = value.toDate();
+      final day = date.day.toString().padLeft(2, '0');
+      final month = date.month.toString().padLeft(2, '0');
+      final hour = date.hour.toString().padLeft(2, '0');
+      final minute = date.minute.toString().padLeft(2, '0');
+      return '$day/$month · $hour:$minute';
+    }
+    return '';
+  }
+
   Future<void> startConversation(BuildContext context) async {
     final chatService = service;
     final options = currentRole == 'trainer' ? await chatService.loadClients() : await chatService.loadTrainers();
     if (!context.mounted) return;
-
     if (options.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(currentRole == 'trainer' ? 'No hay clientes disponibles.' : 'No hay entrenadores disponibles.')),
@@ -73,11 +88,27 @@ class ConversationsPage extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  currentRole == 'trainer' ? 'Iniciar chat con cliente' : 'Iniciar chat con entrenador',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: context.gymText),
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: context.gymPrimary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(Icons.add_comment_rounded, color: context.gymPrimary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        currentRole == 'trainer' ? 'Iniciar chat con cliente' : 'Iniciar chat con entrenador',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: context.gymText),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Flexible(
                   child: ListView.builder(
                     shrinkWrap: true,
@@ -88,7 +119,7 @@ class ConversationsPage extends StatelessWidget {
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
                           color: context.gymSubtleSurface,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: context.gymBorder),
                         ),
                         child: ListTile(
@@ -128,13 +159,12 @@ class ConversationsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final chatService = service;
     final key = currentUserId.isNotEmpty ? currentUserId : currentUserEmail.toLowerCase();
-
     return Scaffold(
-      appBar: AppBar(title: Text('Mensajes')),
+      appBar: AppBar(title: const Text('Mensajes')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => startConversation(context),
-        icon: Icon(Icons.add_comment),
-        label: Text('Nuevo chat'),
+        icon: const Icon(Icons.add_comment_rounded),
+        label: const Text('Nuevo chat'),
       ),
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -143,9 +173,8 @@ class ConversationsPage extends StatelessWidget {
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
+              return Center(child: CircularProgressIndicator(color: context.gymPrimary));
             }
-
             final conversations = snapshot.data?.docs ?? [];
             conversations.sort((a, b) {
               final aDate = a.data()['lastMessageAt'];
@@ -160,9 +189,14 @@ class ConversationsPage extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 children: [
                   AppCard(
-                    child: Text(
-                      'Todavía no tienes conversaciones. Pulsa "Nuevo chat" para iniciar una.',
-                      style: TextStyle(color: context.gymMutedText),
+                    child: Column(
+                      children: [
+                        Icon(Icons.mark_chat_unread_outlined, color: context.gymPrimary, size: 34),
+                        const SizedBox(height: 10),
+                        Text('Todavía no tienes conversaciones', style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900, fontSize: 17)),
+                        const SizedBox(height: 4),
+                        Text('Pulsa "Nuevo chat" para iniciar una conversación.', textAlign: TextAlign.center, style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w700)),
+                      ],
                     ),
                   ),
                 ],
@@ -177,18 +211,39 @@ class ConversationsPage extends StatelessWidget {
                 final data = doc.data();
                 final other = chatService.otherParticipant(data);
                 final lastMessage = data['lastMessage']?.toString() ?? 'Sin mensajes todavía';
-                final time = chatService.formatTime(data['lastMessageAt']);
+                final time = formatTime(data['lastMessageAt']);
                 final unread = chatService.isUnread(data);
 
                 return AppCard(
                   margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  radius: 22,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(18),
                     onTap: () => openChat(context, other),
                     child: Row(
                       children: [
-                        ProfileAvatar(name: other.name, size: 46),
-                        SizedBox(width: 12),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ProfileAvatar(name: other.name, size: 48),
+                            if (unread)
+                              Positioned(
+                                right: -1,
+                                top: -1,
+                                child: Container(
+                                  width: 13,
+                                  height: 13,
+                                  decoration: BoxDecoration(
+                                    color: context.gymPrimary,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: context.gymSurface, width: 2),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,30 +255,47 @@ class ConversationsPage extends StatelessWidget {
                                       other.name,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(fontWeight: FontWeight.w900, color: unread ? context.gymPrimary : context.gymText),
+                                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: unread ? context.gymPrimary : context.gymText),
                                     ),
                                   ),
-                                  if (time.isNotEmpty) Text(time, style: TextStyle(color: context.gymMutedText.withValues(alpha: 0.80), fontSize: 11)),
+                                  if (time.isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: context.gymSubtleSurface,
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(color: context.gymBorder.withValues(alpha: 0.7)),
+                                      ),
+                                      child: Text(time, style: TextStyle(color: context.gymMutedText, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                                    ),
                                 ],
                               ),
-                              SizedBox(height: 4),
-                              Text(
-                                lastMessage,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: unread ? context.gymText : context.gymMutedText),
+                              const SizedBox(height: 5),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: context.gymPrimary.withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(color: context.gymPrimary.withValues(alpha: 0.16)),
+                                    ),
+                                    child: Text(roleLabel(other.role), style: TextStyle(color: context.gymPrimary, fontSize: 10, fontWeight: FontWeight.w900)),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    child: Text(
+                                      lastMessage,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(color: unread ? context.gymText : context.gymMutedText, fontWeight: unread ? FontWeight.w800 : FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                        if (unread) ...[
-                          SizedBox(width: 8),
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(color: context.gymPrimary, shape: BoxShape.circle),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -236,6 +308,3 @@ class ConversationsPage extends StatelessWidget {
     );
   }
 }
-
-
-

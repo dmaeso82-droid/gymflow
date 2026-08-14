@@ -13,13 +13,13 @@ class _SecondaryActionsCardState extends State<_SecondaryActionsCard> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleActions = expanded ? widget.actions : widget.actions.take(12).toList();
+    final visibleActions = expanded ? widget.actions : widget.actions.take(6).toList();
     return AppCard(
       padding: const EdgeInsets.all(12),
       radius: 24,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: _SectionTitle(icon: Icons.grid_view_rounded, title: 'Más herramientas')),
+          Expanded(child: _SectionTitle(icon: Icons.grid_view_rounded, title: expanded ? 'Todas las herramientas' : 'Más herramientas')),
           TextButton.icon(
             onPressed: () => setState(() => expanded = !expanded),
             icon: Icon(expanded ? Icons.expand_less : Icons.expand_more),
