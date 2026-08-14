@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-
 import '../features/client_goals.dart';
 import '../widgets/app_card.dart';
 import '../widgets/section_title.dart';
@@ -32,7 +31,9 @@ class _TrainerGoalsPageState extends State<TrainerGoalsPage> {
           stream: clientsRef.orderBy('createdAt', descending: true).snapshots(),
           builder: (context, snapshot) {
             final clients = snapshot.data?.docs ?? [];
-            if (selectedClientId == null && clients.isNotEmpty) selectedClientId = clients.first.id;
+            if (selectedClientId == null && clients.isNotEmpty) {
+              selectedClientId = clients.first.id;
+            }
 
             QueryDocumentSnapshot<Map<String, dynamic>>? selected;
             for (final doc in clients) {
@@ -52,12 +53,18 @@ class _TrainerGoalsPageState extends State<TrainerGoalsPage> {
                         Text('Primero crea un cliente.', style: TextStyle(color: context.gymMutedText))
                       else
                         DropdownButtonFormField<String>(
-                          value: selectedClientId,
+                          initialValue: selectedClientId,
                           dropdownColor: context.gymSurface,
-                          decoration: InputDecoration(labelText: 'Cliente seleccionado', border: OutlineInputBorder(borderRadius: BorderRadius.circular(16))),
+                          decoration: InputDecoration(
+                            labelText: 'Cliente seleccionado',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
                           items: clients.map((doc) {
                             final data = doc.data();
-                            return DropdownMenuItem(value: doc.id, child: Text('${data['name'] ?? 'Sin nombre'} · ${data['email'] ?? 'Sin email'}'));
+                            return DropdownMenuItem(
+                              value: doc.id,
+                              child: Text('${data['name'] ?? 'Sin nombre'} · ${data['email'] ?? 'Sin email'}'),
+                            );
                           }).toList(),
                           onChanged: (value) => setState(() => selectedClientId = value),
                         ),
@@ -79,6 +86,3 @@ class _TrainerGoalsPageState extends State<TrainerGoalsPage> {
     );
   }
 }
-
-
-

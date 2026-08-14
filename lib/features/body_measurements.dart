@@ -423,7 +423,7 @@ Future<void> showMeasurementDialog(BuildContext context) async {
               SectionTitle(icon: Icons.show_chart, title: 'Evolución corporal'),
               SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: selectedMetric,
+                initialValue: selectedMetric,
                 dropdownColor: context.gymSurface,
                 decoration: InputDecoration(
                   labelText: 'Métrica',

@@ -182,7 +182,7 @@ String formatDate(dynamic value) {
               ),
               SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                value: selectedExercise,
+                initialValue: selectedExercise,
                 dropdownColor: context.gymSurface,
                 decoration: InputDecoration(
                   labelText: 'Ejercicio',
@@ -262,7 +262,7 @@ class ExerciseProgressDetail extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: (isImproving ? context.gymFitnessAccent : context.gymMutedText).withOpacity(0.12),
+                  color: (isImproving ? context.gymFitnessAccent : context.gymMutedText).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
