@@ -51,7 +51,7 @@ class HallOfFamePage extends StatelessWidget {
   String userId(Map<String, dynamic> data) => (data['userId'] ?? data['winnerId'] ?? '').toString();
   String userEmail(Map<String, dynamic> data) => (data['userEmail'] ?? data['winnerEmail'] ?? '').toString().toLowerCase();
 
-  void addGrouped(Map<String, _FameEntry> map, Map<String, dynamic> data, int delta) {
+  void _addGrouped(Map<String, _FameEntry> map, Map<String, dynamic> data, int delta) {
     final key = userKey(data);
     if (key.isEmpty) return;
     final entry = map.putIfAbsent(
@@ -65,7 +65,7 @@ class HallOfFamePage extends StatelessWidget {
     entry.value += delta;
   }
 
-  List<_FameEntry> sortedEntries(Iterable<_FameEntry> entries, Map<String, int> allTimePoints) {
+  List<_FameEntry> _sortedEntries(Iterable<_FameEntry> entries, Map<String, int> allTimePoints) {
     final list = entries.where((entry) => entry.value > 0).toList();
     for (final entry in list) {
       final key = entry.userId.isNotEmpty ? entry.userId : entry.userEmail.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
@@ -75,7 +75,7 @@ class HallOfFamePage extends StatelessWidget {
     return list.take(5).toList();
   }
 
-  Future<List<_FameCategory>> loadHallOfFame() async {
+  Future<List<_FameCategory>> _loadHallOfFame() async {
     final results = await Future.wait([
       leaderboardRef.get(),
       userStatsRef.get(),
@@ -127,12 +127,12 @@ class HallOfFamePage extends StatelessWidget {
 
     final achievementsGrouped = <String, _FameEntry>{};
     for (final doc in achievementsSnapshot.docs) {
-      addGrouped(achievementsGrouped, doc.data(), 1);
+      _addGrouped(achievementsGrouped, doc.data(), 1);
     }
 
     final challengesGrouped = <String, _FameEntry>{};
     for (final doc in challengesSnapshot.docs) {
-      addGrouped(challengesGrouped, doc.data(), 1);
+      _addGrouped(challengesGrouped, doc.data(), 1);
     }
 
     final duelsGrouped = <String, _FameEntry>{};
@@ -141,7 +141,7 @@ class HallOfFamePage extends StatelessWidget {
       if ((data['status'] ?? '').toString() != 'completed') continue;
       final winnerId = data['winnerId']?.toString() ?? '';
       if (winnerId.isEmpty) continue;
-      addGrouped(duelsGrouped, {
+      _addGrouped(duelsGrouped, {
         'userId': winnerId,
         'userName': data['winnerName']?.toString() ?? 'Ganador',
         'userEmail': data['winnerEmail']?.toString() ?? '',
@@ -168,26 +168,26 @@ class HallOfFamePage extends StatelessWidget {
         title: 'Coleccionista de logros',
         subtitle: 'Más logros desbloqueados',
         unit: 'logros',
-        entries: sortedEntries(achievementsGrouped.values, allTimePoints),
+        entries: _sortedEntries(achievementsGrouped.values, allTimePoints),
       ),
       _FameCategory(
         icon: Icons.flag,
         title: 'Cazador de retos',
         subtitle: 'Más retos completados',
         unit: 'retos',
-        entries: sortedEntries(challengesGrouped.values, allTimePoints),
+        entries: _sortedEntries(challengesGrouped.values, allTimePoints),
       ),
       _FameCategory(
         icon: Icons.sports_mma,
         title: 'Campeón de duelos',
         subtitle: 'Más duelos ganados',
         unit: 'victorias',
-        entries: sortedEntries(duelsGrouped.values, allTimePoints),
+        entries: _sortedEntries(duelsGrouped.values, allTimePoints),
       ),
     ];
   }
 
-  void openProfile(BuildContext context, _FameEntry entry) {
+  void _openProfile(BuildContext context, _FameEntry entry) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -212,7 +212,7 @@ class HallOfFamePage extends StatelessWidget {
         decoration: BoxDecoration(gradient: context.gymHomeGradient),
         child: SafeArea(
           child: FutureBuilder<List<_FameCategory>>(
-            future: loadHallOfFame(),
+            future: _loadHallOfFame(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -254,7 +254,7 @@ class HallOfFamePage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ...categories.map((category) => _FameCategoryCard(category: category, onOpenProfile: (entry) => openProfile(context, entry))),
+                  ...categories.map((category) => _FameCategoryCard(category: category, onOpenProfile: (entry) => _openProfile(context, entry))),
                 ],
               );
             },

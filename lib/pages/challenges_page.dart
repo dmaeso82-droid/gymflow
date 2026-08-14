@@ -136,8 +136,13 @@ class ChallengesPage extends StatelessWidget {
       },
     );
 
-    if (option == 'challenge') createChallenge(context);
-    if (option == 'duel') createDuel(context);
+    if (!context.mounted) return;
+    if (option == 'challenge') {
+      await createChallenge(context);
+    }
+    if (option == 'duel') {
+      await createDuel(context);
+    }
   }
 
   @override
