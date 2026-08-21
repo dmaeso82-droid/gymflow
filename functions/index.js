@@ -6,3 +6,4 @@ setGlobalOptions({maxInstances: 10, region: "europe-west1"});
 Object.assign(exports, require("./billing"));
 Object.assign(exports, require("./users"));
 Object.assign(exports, require("./gamification"));
+Object.assign(exports, require("./members"));

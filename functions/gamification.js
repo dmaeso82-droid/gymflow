@@ -163,4 +163,136 @@ exports.recordWorkoutSetSecure = onCall(async (request) => {
   }
 });
 
-module.exports = { awardPointsSecure: exports.awardPointsSecure, recordWorkoutSetSecure: exports.recordWorkoutSetSecure };
+const ACHIEVEMENTS = [
+  ["first_workout", "Primer entrenamiento", "Completa tu primer entrenamiento.", "workouts", 1, "workout"],
+  ["workouts_10", "10 entrenamientos", "Completa 10 entrenamientos.", "workouts", 10, "workout"],
+  ["workouts_50", "50 entrenamientos", "Completa 50 entrenamientos.", "workouts", 50, "trophy"],
+  ["workouts_100", "100 entrenamientos", "Completa 100 entrenamientos.", "workouts", 100, "trophy"],
+  ["series_10", "10 series registradas", "Registra 10 series.", "series", 10, "series"],
+  ["series_50", "50 series registradas", "Registra 50 series.", "series", 50, "series"],
+  ["series_100", "100 series registradas", "Registra 100 series.", "series", 100, "series"],
+  ["volume_10000", "10.000 kg movidos", "Acumula 10.000 kg de volumen.", "volume", 10000, "volume"],
+  ["volume_50000", "50.000 kg movidos", "Acumula 50.000 kg de volumen.", "volume", 50000, "volume"],
+  ["volume_100000", "100.000 kg movidos", "Acumula 100.000 kg de volumen.", "volume", 100000, "volume"],
+  ["streak_7", "Racha de 7 días", "Entrena 7 días de apertura seguidos.", "streak", 7, "streak"],
+  ["streak_30", "Racha de 30 días", "Entrena 30 días de apertura seguidos.", "streak", 30, "streak"],
+  ["exercises_10", "10 ejercicios diferentes", "Registra 10 ejercicios diferentes.", "exercises", 10, "exercise"],
+  ["first_progress_photo", "Primera foto de progreso", "Sube tu primera foto de progreso.", "photos", 1, "photo"],
+  ["progress_photos_10", "10 fotos de progreso", "Sube 10 fotos de progreso.", "photos", 10, "photo"],
+  ["progress_photos_25", "25 fotos de progreso", "Sube 25 fotos de progreso.", "photos", 25, "photo"],
+  ["first_transformation_shared", "Primera transformación compartida", "Comparte tu primera transformación.", "transformations", 1, "transformation"],
+  ["transformations_3", "3 transformaciones compartidas", "Comparte 3 transformaciones.", "transformations", 3, "transformation"],
+  ["transformations_10", "10 transformaciones compartidas", "Comparte 10 transformaciones.", "transformations", 10, "transformation"],
+].map(([id, title, description, metric, target, iconKey]) => ({id, title, description, metric, target, iconKey}));
+
+async function countQuery(query) {
+  const snap = await query.count().get();
+  return snap.data().count;
+}
+
+async function secureUserStats(gymId, uid) {
+  const gymRef = db.collection("gyms").doc(gymId);
+  const statsSnap = await gymRef.collection("user_stats").doc(uid).get();
+  const data = statsSnap.data() || {};
+  const [photos, transformations, completedGoals, measurements] = await Promise.all([
+    countQuery(gymRef.collection("progress_photos").where("userId", "==", uid)),
+    countQuery(gymRef.collection("community_posts").where("type", "==", "transformation_post").where("userId", "==", uid)),
+    countQuery(gymRef.collection("goals").where("userId", "==", uid).where("completed", "==", true)),
+    countQuery(gymRef.collection("body_measurements").where("userId", "==", uid)),
+  ]);
+  return {
+    workouts: Number(data.workouts || 0), series: Number(data.series || 0),
+    volume: Number(data.volume || 0), streak: Number(data.currentStreak || 0),
+    exercises: Number(data.exerciseCount || 0), photos, transformations,
+    completedGoals, measurements,
+  };
+}
+
+function achievementValue(stats, metric) {
+  return Number(stats[metric] || 0);
+}
+
+async function createServerNotification(gymRef, uid, user, type, title, message, sourceId, metadata) {
+  await gymRef.collection("notifications").add({
+    userId: uid, userEmail: normalizeEmail(user.email), type, title, message,
+    sourceId, metadata: metadata || {}, read: false,
+    createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+exports.evaluateAchievementsSecure = onCall(async (request) => {
+  try {
+    const identity = await authenticatedGymUser(request, request.data?.gymId);
+    await assertActiveFeature(identity.gymId);
+    const requested = Array.isArray(request.data?.metrics) ? new Set(request.data.metrics.map(String)) : null;
+    const stats = await secureUserStats(identity.gymId, identity.uid);
+    const gymRef = db.collection("gyms").doc(identity.gymId);
+    const unlocked = [];
+    for (const definition of ACHIEVEMENTS) {
+      if (requested && !requested.has(definition.metric)) continue;
+      const current = achievementValue(stats, definition.metric);
+      if (current < definition.target) continue;
+      const ref = gymRef.collection("user_achievements").doc(`${identity.uid}_${definition.id}`);
+      const created = await db.runTransaction(async (transaction) => {
+        if ((await transaction.get(ref)).exists) return false;
+        transaction.create(ref, {
+          achievementId: definition.id, userId: identity.uid,
+          userName: String(identity.user.name || requestNameFallback(identity.user)),
+          userEmail: normalizeEmail(identity.user.email), ...definition, current,
+          unlockedAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+      if (!created) continue;
+      const metadata = {...definition, current};
+      await awardPointsServer({gymId: identity.gymId, uid: identity.uid, user: identity.user, points: 25, sourceType: "achievement_unlocked", sourceId: definition.id, metadata});
+      await createServerNotification(gymRef, identity.uid, identity.user, "achievement_unlocked", "Logro desbloqueado", `${definition.title} conseguido.`, definition.id, metadata);
+      unlocked.push(metadata);
+    }
+    return {ok: true, unlocked};
+  } catch (error) {
+    throw callableError(error, "No se pudieron evaluar los logros.");
+  }
+});
+
+function challengeProgress(type, stats) {
+  const values = {volume_total: stats.volume, series_count: stats.series, streak_days: stats.streak, goals_completed: stats.completedGoals, measurements_count: stats.measurements, workout_count: stats.workouts};
+  return Number(values[type] || 0);
+}
+
+exports.completeChallengesSecure = onCall(async (request) => {
+  try {
+    const identity = await authenticatedGymUser(request, request.data?.gymId);
+    await assertActiveFeature(identity.gymId, "challenges");
+    const gymRef = db.collection("gyms").doc(identity.gymId);
+    const [stats, challenges] = await Promise.all([secureUserStats(identity.gymId, identity.uid), gymRef.collection("challenges").where("active", "==", true).get()]);
+    const completed = [];
+    for (const doc of challenges.docs) {
+      const challenge = doc.data() || {};
+      const target = Number(challenge.target || 0);
+      const progress = challengeProgress(String(challenge.type || "workout_count"), stats);
+      if (target <= 0 || progress < target) continue;
+      const ref = gymRef.collection("challenge_completions").doc(`${identity.uid}_${doc.id}`);
+      const created = await db.runTransaction(async (transaction) => {
+        if ((await transaction.get(ref)).exists) return false;
+        transaction.create(ref, {challengeId: doc.id, challengeTitle: String(challenge.title || "Reto"), challengeType: String(challenge.type || "workout_count"), target, progress, userId: identity.uid, userName: String(identity.user.name || requestNameFallback(identity.user)), userEmail: normalizeEmail(identity.user.email), points: 75, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()});
+        return true;
+      });
+      if (!created) continue;
+      const metadata = {challengeId: doc.id, challengeTitle: String(challenge.title || "Reto"), challengeType: String(challenge.type || "workout_count"), progress, target};
+      await awardPointsServer({gymId: identity.gymId, uid: identity.uid, user: identity.user, points: 75, sourceType: "challenge_completed", sourceId: doc.id, metadata});
+      await createServerNotification(gymRef, identity.uid, identity.user, "challenge_completed", "Reto completado", `Has completado "${metadata.challengeTitle}" y sumas 75 puntos.`, doc.id, metadata);
+      completed.push(metadata);
+    }
+    return {ok: true, completed};
+  } catch (error) {
+    throw callableError(error, "No se pudieron completar los retos.");
+  }
+});
+
+module.exports = {
+  awardPointsSecure: exports.awardPointsSecure,
+  recordWorkoutSetSecure: exports.recordWorkoutSetSecure,
+  evaluateAchievementsSecure: exports.evaluateAchievementsSecure,
+  completeChallengesSecure: exports.completeChallengesSecure,
+};
