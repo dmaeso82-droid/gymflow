@@ -18,6 +18,7 @@ part 'user_profile/recent_achievements_card.dart';
 part 'user_profile/shared_transformations_card.dart';
 part 'user_profile/user_profile_stats.dart';
 part 'user_profile/profile_widgets.dart';
+part 'user_profile/personal_hall_of_fame_card.dart';
 
 class UserProfilePage extends StatelessWidget {
   final String gymId;
@@ -187,6 +188,7 @@ bool belongsToUser(Map<String, dynamic> data) {
             final lastExercise = statsData['lastExercise']?.toString() ?? '';
             final lastWorkout = statsData['lastWorkout'];
             final streak = AppFormatters.intValue(statsData['currentStreak']);
+            final bestStreak = AppFormatters.intValue(statsData['bestStreak']);
             final photos = AppFormatters.intValue(statsData['photos']);
             final transformations = AppFormatters.intValue(statsData['transformations']);
             final statsPoints = AppFormatters.intValue(statsData['points']);
@@ -259,6 +261,21 @@ bool belongsToUser(Map<String, dynamic> data) {
                       photos: photos,
                       transformations: transformations,
                       statsPoints: statsPoints,
+                    ),
+                    const SizedBox(height: 12),
+                    _PersonalHallOfFameCard(
+                      leaderboardRef: leaderboardRef,
+                      achievementsRef: achievementsRef,
+                      communityPostsRef: communityPostsRef,
+                      leaderboardDocId: statsDocId,
+                      userId: userId,
+                      userEmail: normalizedEmail,
+                      points: statsPoints,
+                      workouts: workouts,
+                      bestStreak: bestStreak > streak ? bestStreak : streak,
+                      records: records,
+                      exerciseCount: exerciseCount,
+                      transformations: transformations,
                     ),
                     const SizedBox(height: 12),
                     _ProfileRankingPositions(

@@ -20,7 +20,6 @@ class _AdaptiveHomeSections extends StatelessWidget {
   });
 
   FirebaseFirestore get firestore => FirebaseFirestore.instance;
-
   String get normalizedEmail => userEmail.trim().toLowerCase();
 
   String get userKey {
@@ -51,17 +50,18 @@ class _AdaptiveHomeSections extends StatelessWidget {
     final currentStreak = intValue(stats['currentStreak']);
     final series = intValue(stats['series']);
     final exercises = intValue(stats['exerciseCount']);
-
     var photoCount = 0;
+
     if (userId.trim().isNotEmpty) {
-      photoCount += await queryCount(firestore.collection('gyms').doc(gymId).collection('progress_photos').where('userId', isEqualTo: userId.trim()));
+      photoCount += await queryCount(
+        firestore.collection('gyms').doc(gymId).collection('progress_photos').where('userId', isEqualTo: userId.trim()),
+      );
     }
     if (normalizedEmail.isNotEmpty) {
-      photoCount += await queryCount(firestore.collection('gyms').doc(gymId).collection('progress_photos').where('userEmail', isEqualTo: normalizedEmail));
+      photoCount += await queryCount(
+        firestore.collection('gyms').doc(gymId).collection('progress_photos').where('userEmail', isEqualTo: normalizedEmail),
+      );
     }
-
-    final activityCount = await queryCount(firestore.collection('gyms').doc(gymId).collection('activity').orderBy('createdAt', descending: true));
-    final postsCount = await queryCount(firestore.collection('gyms').doc(gymId).collection('community_posts').orderBy('createdAt', descending: true));
 
     return _AdaptiveHomeData(
       workouts: workouts,
@@ -70,7 +70,6 @@ class _AdaptiveHomeSections extends StatelessWidget {
       series: series,
       exercises: exercises,
       photoCount: photoCount,
-      globalActivityCount: activityCount + postsCount,
     );
   }
 
@@ -81,30 +80,14 @@ class _AdaptiveHomeSections extends StatelessWidget {
       builder: (context, snapshot) {
         final data = snapshot.data ?? const _AdaptiveHomeData.empty();
         final isNewUser = !snapshot.hasData || data.isNewUser;
-        final showDashboard = data.hasTrainingSignal || data.hasPhotos || data.hasPoints;
         final showSecondaryTools = !isNewUser;
-        final showActivity = !isNewUser && data.globalActivityCount >= 3;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _PrimaryActionsCard(actions: primaryActions),
-            if (showDashboard) ...[
-              const SizedBox(height: 12),
-              UserDashboard(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail),
-            ],
             if (showSecondaryTools) ...[
               const SizedBox(height: 12),
               _SecondaryActionsCard(actions: secondaryActions),
-            ],
-            if (showActivity) ...[
-              const SizedBox(height: 12),
-              _HomeActivityFeed(
-                gymId: gymId,
-                userId: userId,
-                userEmail: userEmail,
-                onOpenCommunity: onOpenCommunity,
-              ),
             ],
           ],
         );
@@ -120,7 +103,6 @@ class _AdaptiveHomeData {
   final int series;
   final int exercises;
   final int photoCount;
-  final int globalActivityCount;
 
   const _AdaptiveHomeData({
     required this.workouts,
@@ -129,7 +111,6 @@ class _AdaptiveHomeData {
     required this.series,
     required this.exercises,
     required this.photoCount,
-    required this.globalActivityCount,
   });
 
   const _AdaptiveHomeData.empty()
@@ -138,8 +119,7 @@ class _AdaptiveHomeData {
         currentStreak = 0,
         series = 0,
         exercises = 0,
-        photoCount = 0,
-        globalActivityCount = 0;
+        photoCount = 0;
 
   bool get hasTrainingSignal => workouts > 0 || series > 0 || exercises > 0 || currentStreak > 0;
   bool get hasPhotos => photoCount > 0;

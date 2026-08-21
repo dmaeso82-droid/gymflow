@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/challenge_service.dart';
 import '../services/duel_service.dart';
+import '../services/subscription_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/challenge_card.dart';
 import '../widgets/challenge_creation_dialog.dart';
 import '../widgets/duel_card.dart';
 import '../widgets/duel_creation_dialog.dart';
+import 'subscription_upgrade_page.dart';
 
 class ChallengesPage extends StatelessWidget {
   final String gymId;
@@ -27,8 +29,10 @@ class ChallengesPage extends StatelessWidget {
 
   ChallengeService get service => ChallengeService(gymId: gymId, userEmail: userEmail);
   DuelService get duelService => DuelService(gymId: gymId);
+  SubscriptionService get subscriptionService => SubscriptionService(gymId: gymId);
 
   Future<void> createChallenge(BuildContext context) async {
+    await subscriptionService.assertActive(feature: 'challenges');
     final challengeService = service;
     final result = await showChallengeCreationDialog(context: context, service: challengeService);
     if (result == null) return;
@@ -40,9 +44,8 @@ class ChallengesPage extends StatelessWidget {
       target: result.target,
     );
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reto creado.')));
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reto creado.')));
   }
 
   Future<void> deleteChallenge(BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
@@ -68,10 +71,12 @@ class ChallengesPage extends StatelessWidget {
       },
     );
     if (confirm != true) return;
+    if (!context.mounted) return;
     await challengeService.deleteChallenge(doc.id);
   }
 
   Future<void> createDuel(BuildContext context) async {
+    await subscriptionService.assertActive(feature: 'challenges');
     final result = await showDuelCreationDialog(
       context: context,
       service: duelService,
@@ -90,12 +95,19 @@ class ChallengesPage extends StatelessWidget {
       points: result.points,
     );
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duelo creado.')));
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duelo creado.')));
   }
 
   Future<void> showNewActionMenu(BuildContext context) async {
+    try {
+      await subscriptionService.assertActive(feature: 'challenges');
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Bad state: ', ''))));
+      }
+      return;
+    }
     if (!trainerMode) {
       await createDuel(context);
       return;
@@ -138,9 +150,11 @@ class ChallengesPage extends StatelessWidget {
 
     if (!context.mounted) return;
     if (option == 'challenge') {
+      if (!context.mounted) return;
       await createChallenge(context);
     }
     if (option == 'duel') {
+      if (!context.mounted) return;
       await createDuel(context);
     }
   }
@@ -150,7 +164,12 @@ class ChallengesPage extends StatelessWidget {
     final challengeService = service;
     final isCompact = MediaQuery.of(context).size.width < 600;
 
-    return Scaffold(
+    return SubscriptionFeatureGate(
+      gymId: gymId,
+      featureKey: 'challenges',
+      featureName: 'Retos',
+      upgradeReason: 'Los retos y duelos están disponibles en el plan Pro y Enterprise.',
+      child: Scaffold(
       appBar: AppBar(title: Text('Retos')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showNewActionMenu(context),
@@ -269,7 +288,7 @@ class ChallengesPage extends StatelessWidget {
                         }
 
                         return Column(
-                          children: duels.map((doc) => DuelCard(doc: doc, service: duelService)).toList(),
+                          children: duels.map((doc) => DuelCard(doc: doc, service: duelService, currentUserId: userId, currentUserEmail: userEmail, trainerMode: trainerMode)).toList(),
                         );
                       },
                     ),
@@ -280,6 +299,7 @@ class ChallengesPage extends StatelessWidget {
           },
         ),
       ),
+    ),
     );
   }
 }

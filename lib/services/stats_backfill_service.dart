@@ -100,8 +100,8 @@ class StatsBackfillService {
 
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final userId = data['userId']?.toString() ?? '';
-      final userEmail = (data['userEmail'] ?? '').toString().toLowerCase();
+      final userId = data['userId']?.toString().trim() ?? '';
+      final userEmail = (data['userEmail'] ?? '').toString().trim().toLowerCase();
       final docId = safeDocId(userId, userEmail);
       if (docId.isEmpty) continue;
 
@@ -117,6 +117,7 @@ class StatsBackfillService {
 
       final weight = doubleValue(data['weight']);
       final reps = intValue(data['reps']);
+      if (!weight.isFinite || weight < 0 || reps <= 0) continue;
       final volume = weight * reps;
       final exercise = data['exercise']?.toString().trim() ?? '';
       final createdAt = data['createdAt'];

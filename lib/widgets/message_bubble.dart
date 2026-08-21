@@ -23,31 +23,33 @@ class MessageBubble extends StatelessWidget {
     final text = data['text']?.toString() ?? '';
     final sender = data['senderName']?.toString() ?? '';
     final time = formatTime(data['createdAt']);
-    final bubbleColor = isMine
-        ? context.gymPrimary.withValues(alpha: context.gymIsDark ? 0.24 : 0.13)
-        : context.gymSubtleSurface.withValues(alpha: 0.92);
-    final bubbleBorder = isMine ? context.gymPrimary.withValues(alpha: 0.34) : context.gymBorder;
+    final maxWidth = MediaQuery.of(context).size.width * 0.78;
+    final background = isMine
+        ? context.gymPrimary
+        : context.gymSubtleSurface.withValues(alpha: context.gymIsDark ? 0.72 : 0.82);
+    final foreground = isMine ? Colors.white : context.gymText;
+    final muted = isMine ? Colors.white.withValues(alpha: 0.78) : context.gymMutedText;
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
-        margin: const EdgeInsets.only(bottom: 9),
-        padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(13, 10, 13, 8),
         decoration: BoxDecoration(
-          color: bubbleColor,
+          color: background,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(isMine ? 20 : 6),
-            bottomRight: Radius.circular(isMine ? 6 : 20),
+            topLeft: const Radius.circular(22),
+            topRight: const Radius.circular(22),
+            bottomLeft: Radius.circular(isMine ? 22 : 7),
+            bottomRight: Radius.circular(isMine ? 7 : 22),
           ),
-          border: Border.all(color: bubbleBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: context.gymIsDark ? 0.16 : 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
+              color: Colors.black.withValues(alpha: context.gymIsDark ? 0.14 : 0.045),
+              blurRadius: 16,
+              spreadRadius: -8,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
@@ -55,37 +57,15 @@ class MessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isMine && sender.isNotEmpty) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.person_rounded, size: 13, color: context.gymPrimary),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      sender,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: context.gymPrimary),
-                    ),
-                  ),
-                ],
-              ),
+              Text(sender, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymPrimary, fontSize: 11.5, fontWeight: FontWeight.w900)),
               const SizedBox(height: 4),
             ],
-            Text(text, style: TextStyle(color: context.gymText, height: 1.28, fontSize: 14.5, fontWeight: FontWeight.w600)),
+            Text(text, style: TextStyle(color: foreground, height: 1.30, fontSize: 14.5, fontWeight: FontWeight.w600)),
             if (time.isNotEmpty) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Align(
                 alignment: Alignment.centerRight,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: context.gymSurface.withValues(alpha: 0.68),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: context.gymBorder.withValues(alpha: 0.45)),
-                  ),
-                  child: Text(time, style: TextStyle(color: context.gymMutedText, fontSize: 10.5, fontWeight: FontWeight.w800)),
-                ),
+                child: Text(time, style: TextStyle(color: muted, fontSize: 10.5, fontWeight: FontWeight.w800)),
               ),
             ],
           ],

@@ -40,7 +40,6 @@ class _OnboardingChecklistCardState extends State<_OnboardingChecklistCard> {
   }
 
   FirebaseFirestore get firestore => FirebaseFirestore.instance;
-
   String get normalizedEmail => widget.userEmail.trim().toLowerCase();
 
   String get userKey {
@@ -48,15 +47,16 @@ class _OnboardingChecklistCardState extends State<_OnboardingChecklistCard> {
     return normalizedEmail.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   }
 
-  DocumentReference<Map<String, dynamic>> get statsRef => firestore.collection('gyms').doc(widget.gymId).collection('user_stats').doc(userKey);
-
-  DocumentReference<Map<String, dynamic>> get onboardingAchievementRef => firestore.collection('gyms').doc(widget.gymId).collection('user_achievements').doc('${userKey}_onboarding_first_steps');
-
-  CollectionReference<Map<String, dynamic>> get photosRef => firestore.collection('gyms').doc(widget.gymId).collection('progress_photos');
-
-  CollectionReference<Map<String, dynamic>> get logsRef => firestore.collection('gyms').doc(widget.gymId).collection('workout_logs');
-
-  CollectionReference<Map<String, dynamic>> get pointsLedgerRef => firestore.collection('gyms').doc(widget.gymId).collection('points_ledger');
+  DocumentReference<Map<String, dynamic>> get statsRef =>
+      firestore.collection('gyms').doc(widget.gymId).collection('user_stats').doc(userKey);
+  DocumentReference<Map<String, dynamic>> get onboardingAchievementRef =>
+      firestore.collection('gyms').doc(widget.gymId).collection('user_achievements').doc('${userKey}_onboarding_first_steps');
+  CollectionReference<Map<String, dynamic>> get photosRef =>
+      firestore.collection('gyms').doc(widget.gymId).collection('progress_photos');
+  CollectionReference<Map<String, dynamic>> get logsRef =>
+      firestore.collection('gyms').doc(widget.gymId).collection('workout_logs');
+  CollectionReference<Map<String, dynamic>> get pointsLedgerRef =>
+      firestore.collection('gyms').doc(widget.gymId).collection('points_ledger');
 
   int intValue(dynamic value) {
     if (value is int) return value;
@@ -188,7 +188,6 @@ class _OnboardingChecklistCardState extends State<_OnboardingChecklistCard> {
     final recordCount = await loadRecordCount();
     final challengeCompleted = await loadChallengeCompleted();
     final wasAlreadyUnlocked = (await onboardingAchievementRef.get()).exists;
-
     final steps = [
       _OnboardingStep(
         icon: Icons.person_rounded,
@@ -253,10 +252,11 @@ class _OnboardingChecklistCardState extends State<_OnboardingChecklistCard> {
       future: onboardingFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return AppCard(
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Row(
               children: [
-                SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: context.gymPrimary)),
                 const SizedBox(width: 12),
                 Expanded(child: Text('Preparando tus primeros pasos...', style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w800))),
               ],
@@ -278,153 +278,92 @@ class _OnboardingChecklistCardState extends State<_OnboardingChecklistCard> {
           (step) => !step.completed,
           orElse: () => steps.first,
         );
-
         if (completed == steps.length) {
-          return AppCard(
-            gradient: context.gymHeroGradient,
-            child: Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.greenAccent.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(19),
-                  ),
-                  child: const Icon(Icons.verified_rounded, color: Colors.greenAccent),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(data.newlyUnlocked ? 'Logro desbloqueado: Primeros pasos' : 'Inicio completado', style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 4),
-                      Text(data.newlyUnlocked ? 'Has completado el programa de inicio y has ganado +250 puntos.' : 'Ya tienes lo básico listo para sacarle partido a GymFlow.', style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
+          return const SizedBox.shrink();
         }
-
-        return AppCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: context.gymPrimary.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Icon(Icons.rocket_launch_rounded, color: context.gymPrimary),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Bienvenido a DalaiGym', style: TextStyle(color: context.gymText, fontSize: 19, fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 3),
-                        Text('$completed de ${steps.length} primeros pasos completados', style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w800)),
-                      ],
+                  Text(
+                    'Tu siguiente misión',
+                    style: TextStyle(
+                      color: context.gymText,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.2,
                     ),
                   ),
-                  Text('${(progress * 100).round()}%', style: TextStyle(color: context.gymPrimary, fontSize: 18, fontWeight: FontWeight.w900)),
+                  const Spacer(),
+                  Text(
+                    '${(progress * 100).round()}%',
+                    style: TextStyle(color: context.gymPrimary, fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  minHeight: 9,
-                  value: progress,
-                  backgroundColor: context.gymBorder.withValues(alpha: 0.42),
-                  valueColor: AlwaysStoppedAnimation<Color>(context.gymPrimary),
-                ),
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 7,
+                value: progress,
+                backgroundColor: context.gymBorder.withValues(alpha: 0.44),
+                valueColor: AlwaysStoppedAnimation<Color>(context.gymPrimary),
               ),
-              const SizedBox(height: 12),
-              if (expanded) ...[
-                ...steps.map((step) => _OnboardingStepTile(step: step)),
-                Center(
-                  child: TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        expanded = false;
-                      });
-                    },
-                    icon: const Icon(Icons.expand_less_rounded),
-                    label: const Text('Ocultar plan completo'),
-                  ),
-                ),
-              ] else ...[
-                _CurrentMissionCard(
-                  step: nextPendingStep,
-                  completed: completed,
-                  total: steps.length,
-                  onShowFullPlan: () {
-                    setState(() {
-                      expanded = true;
-                    });
-                  },
-                ),
-              ],
-              const SizedBox(height: 4),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: context.gymPrimary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: context.gymPrimary.withValues(alpha: 0.18)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.card_giftcard_rounded, size: 16, color: context.gymPrimary),
-                      const SizedBox(width: 6),
-                      Text('Recompensa final: +250 pts', style: TextStyle(color: context.gymPrimary, fontSize: 12, fontWeight: FontWeight.w900)),
-                    ],
-                  ),
-                ),
-              ),
+            ),
+            const SizedBox(height: 12),
+            _CurrentMissionStrip(
+              step: nextPendingStep,
+              completed: completed,
+              total: steps.length,
+              onShowFullPlan: () => setState(() => expanded = !expanded),
+              expanded: expanded,
+            ),
+            if (expanded) ...[
+              const SizedBox(height: 10),
+              ...steps.map((step) => _OnboardingStepTile(step: step)),
             ],
-          ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.card_giftcard_rounded, size: 16, color: context.gymPrimary),
+                const SizedBox(width: 6),
+                Text('Recompensa final: +250 pts', style: TextStyle(color: context.gymPrimary, fontSize: 12, fontWeight: FontWeight.w900)),
+              ],
+            ),
+          ],
         );
       },
     );
   }
 }
 
-
-class _CurrentMissionCard extends StatelessWidget {
+class _CurrentMissionStrip extends StatelessWidget {
   final _OnboardingStep step;
   final int completed;
   final int total;
   final VoidCallback onShowFullPlan;
+  final bool expanded;
 
-  const _CurrentMissionCard({
+  const _CurrentMissionStrip({
     required this.step,
     required this.completed,
     required this.total,
     required this.onShowFullPlan,
+    required this.expanded,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        color: context.gymPrimary.withValues(alpha: context.gymIsDark ? 0.18 : 0.08),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: context.gymPrimary.withValues(alpha: 0.22)),
+        color: context.gymSubtleSurface.withValues(alpha: context.gymIsDark ? 0.48 : 0.70),
+        borderRadius: BorderRadius.circular(26),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,45 +371,46 @@ class _CurrentMissionCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  color: context.gymPrimary.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(16),
+                  color: context.gymPrimary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(19),
                 ),
-                child: Icon(step.icon, color: context.gymPrimary, size: 22),
+                child: Icon(step.icon, color: context.gymPrimary, size: 24),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Tu siguiente misión', style: TextStyle(color: context.gymPrimary, fontSize: 12, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 2),
-                    Text(step.title, style: TextStyle(color: context.gymText, fontSize: 16, fontWeight: FontWeight.w900)),
+                    Text(step.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontSize: 17, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text(step.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymMutedText, fontSize: 12.5, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               Text('$completed/$total', style: TextStyle(color: context.gymMutedText, fontSize: 12, fontWeight: FontWeight.w900)),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(step.subtitle, style: TextStyle(color: context.gymMutedText, fontSize: 12.5, fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: step.onTap,
-              icon: Icon(step.icon, size: 18),
-              label: Text(step.actionLabel.toUpperCase()),
-            ),
-          ),
-          Center(
-            child: TextButton.icon(
-              onPressed: onShowFullPlan,
-              icon: const Icon(Icons.expand_more_rounded),
-              label: const Text('Ver plan completo'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: step.onTap,
+                  icon: Icon(step.icon, size: 18),
+                  label: Text(step.actionLabel.toUpperCase()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: expanded ? 'Ocultar plan' : 'Ver plan completo',
+                onPressed: onShowFullPlan,
+                icon: Icon(expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded),
+              ),
+            ],
           ),
         ],
       ),
@@ -542,9 +482,8 @@ class _OnboardingStepTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(11),
           decoration: BoxDecoration(
-            color: step.completed ? Colors.greenAccent.withValues(alpha: 0.09) : context.gymSubtleSurface,
+            color: step.completed ? Colors.greenAccent.withValues(alpha: 0.08) : context.gymSubtleSurface.withValues(alpha: 0.56),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: step.completed ? Colors.greenAccent.withValues(alpha: 0.22) : context.gymBorder),
           ),
           child: Row(
             children: [
@@ -552,7 +491,7 @@ class _OnboardingStepTile extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.14),
+                  color: iconColor.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(step.completed ? Icons.check_rounded : step.icon, color: iconColor, size: 21),
@@ -570,7 +509,7 @@ class _OnboardingStepTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               if (step.completed)
-                Icon(Icons.done_all_rounded, color: Colors.greenAccent)
+                const Icon(Icons.done_all_rounded, color: Colors.greenAccent)
               else
                 Text(step.actionLabel, style: TextStyle(color: context.gymPrimary, fontSize: 12, fontWeight: FontWeight.w900)),
             ],

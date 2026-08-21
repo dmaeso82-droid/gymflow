@@ -8,8 +8,32 @@ import '../widgets/profile_avatar.dart';
 class DuelCard extends StatelessWidget {
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
   final DuelService service;
+  final String currentUserId;
+  final String currentUserEmail;
+  final bool trainerMode;
 
-  const DuelCard({super.key, required this.doc, required this.service});
+  const DuelCard({
+    super.key,
+    required this.doc,
+    required this.service,
+    required this.currentUserId,
+    required this.currentUserEmail,
+    this.trainerMode = false,
+  });
+
+  bool isOpponent(Map<String, dynamic> data) {
+    final opponentId = data['opponentId']?.toString() ?? '';
+    final opponentEmail = (data['opponentEmail'] ?? '').toString().toLowerCase();
+    return (currentUserId.isNotEmpty && opponentId == currentUserId) ||
+        (currentUserEmail.isNotEmpty && opponentEmail == currentUserEmail.toLowerCase());
+  }
+
+  bool isChallenger(Map<String, dynamic> data) {
+    final challengerId = data['challengerId']?.toString() ?? '';
+    final challengerEmail = (data['challengerEmail'] ?? '').toString().toLowerCase();
+    return (currentUserId.isNotEmpty && challengerId == currentUserId) ||
+        (currentUserEmail.isNotEmpty && challengerEmail == currentUserEmail.toLowerCase());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +42,27 @@ class DuelCard extends StatelessWidget {
     final target = service.doubleValue(data['target']);
     final challengerName = data['challengerName']?.toString() ?? 'Retador';
     final opponentName = data['opponentName']?.toString() ?? 'Oponente';
-    final status = data['status']?.toString() ?? 'active';
+    final status = data['status']?.toString() ?? 'pending';
+
+    if (status == 'pending') {
+      return _PendingDuelCard(
+        data: data,
+        service: service,
+        docId: doc.id,
+        metric: metric,
+        target: target,
+        challengerName: challengerName,
+        opponentName: opponentName,
+        canRespond: isOpponent(data),
+        isChallenger: isChallenger(data),
+        currentUserId: currentUserId,
+        currentUserEmail: currentUserEmail,
+      );
+    }
+
+    if (status == 'declined') {
+      return _DeclinedDuelCard(data: data, service: service, metric: metric, target: target, challengerName: challengerName, opponentName: opponentName);
+    }
 
     return FutureBuilder<DuelProgress>(
       future: service.progressForDuel(doc),
@@ -58,7 +102,7 @@ class DuelCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _DuelStatusPill(completed: completed),
+                  _DuelStatusPill(status: completed ? 'completed' : 'active'),
                 ],
               ),
               const SizedBox(height: 14),
@@ -85,14 +129,202 @@ class DuelCard extends StatelessWidget {
   }
 }
 
-class _DuelStatusPill extends StatelessWidget {
-  final bool completed;
+class _PendingDuelCard extends StatefulWidget {
+  final Map<String, dynamic> data;
+  final DuelService service;
+  final String docId;
+  final String metric;
+  final double target;
+  final String challengerName;
+  final String opponentName;
+  final bool canRespond;
+  final bool isChallenger;
+  final String currentUserId;
+  final String currentUserEmail;
 
-  const _DuelStatusPill({required this.completed});
+  const _PendingDuelCard({
+    required this.data,
+    required this.service,
+    required this.docId,
+    required this.metric,
+    required this.target,
+    required this.challengerName,
+    required this.opponentName,
+    required this.canRespond,
+    required this.isChallenger,
+    required this.currentUserId,
+    required this.currentUserEmail,
+  });
+
+  @override
+  State<_PendingDuelCard> createState() => _PendingDuelCardState();
+}
+
+class _PendingDuelCardState extends State<_PendingDuelCard> {
+  bool saving = false;
+
+  Future<void> accept() async {
+    setState(() => saving = true);
+    await widget.service.acceptDuel(
+      duelId: widget.docId,
+      acceptedById: widget.currentUserId,
+      acceptedByName: widget.opponentName,
+      acceptedByEmail: widget.currentUserEmail,
+    );
+    if (mounted) {
+      setState(() => saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duelo aceptado.')));
+    }
+  }
+
+  Future<void> decline() async {
+    setState(() => saving = true);
+    await widget.service.declineDuel(
+      duelId: widget.docId,
+      declinedById: widget.currentUserId,
+      declinedByName: widget.opponentName,
+      declinedByEmail: widget.currentUserEmail,
+    );
+    if (mounted) {
+      setState(() => saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duelo rechazado.')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final color = completed ? Colors.amberAccent : context.gymFitnessAccent;
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      radius: 24,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.orangeAccent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.22)),
+                ),
+                child: const Icon(Icons.hourglass_top_rounded, color: Colors.orangeAccent),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${widget.challengerName} vs ${widget.opponentName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text('${widget.service.metricLabel(widget.metric)} · objetivo ${widget.service.formatCompact(widget.target)} ${widget.service.metricUnit(widget.metric)}', style: TextStyle(color: context.gymMutedText, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              const _DuelStatusPill(status: 'pending'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orangeAccent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.18)),
+            ),
+            child: Text(
+              widget.canRespond
+                  ? '${widget.challengerName} te ha retado. El progreso empezará a contar cuando aceptes.'
+                  : 'Esperando a que ${widget.opponentName} acepte el duelo. El progreso todavía no cuenta.',
+              style: TextStyle(color: context.gymMutedText, fontWeight: FontWeight.w800),
+            ),
+          ),
+          if (widget.canRespond) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: saving ? null : decline,
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Rechazar'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: saving ? null : accept,
+                    icon: saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check_rounded),
+                    label: const Text('Aceptar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DeclinedDuelCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final DuelService service;
+  final String metric;
+  final double target;
+  final String challengerName;
+  final String opponentName;
+
+  const _DeclinedDuelCard({required this.data, required this.service, required this.metric, required this.target, required this.challengerName, required this.opponentName});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      radius: 24,
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(16)),
+            child: const Icon(Icons.block_rounded, color: Colors.redAccent),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$challengerName vs $opponentName', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontSize: 18, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 3),
+                Text('Duelo rechazado · ${service.metricLabel(metric)}', style: TextStyle(color: context.gymMutedText, fontSize: 12.5, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          const _DuelStatusPill(status: 'declined'),
+        ],
+      ),
+    );
+  }
+}
+
+class _DuelStatusPill extends StatelessWidget {
+  final String status;
+
+  const _DuelStatusPill({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = status == 'completed';
+    final pending = status == 'pending';
+    final declined = status == 'declined';
+    final color = completed ? Colors.amberAccent : pending ? Colors.orangeAccent : declined ? Colors.redAccent : context.gymFitnessAccent;
+    final label = completed ? 'Finalizado' : pending ? 'Pendiente' : declined ? 'Rechazado' : 'Activo';
+    final icon = completed ? Icons.emoji_events_rounded : pending ? Icons.hourglass_top_rounded : declined ? Icons.block_rounded : Icons.timer_rounded;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
@@ -103,9 +335,9 @@ class _DuelStatusPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(completed ? Icons.emoji_events_rounded : Icons.timer_rounded, color: color, size: 14),
+          Icon(icon, color: color, size: 14),
           const SizedBox(width: 4),
-          Text(completed ? 'Finalizado' : 'Activo', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
         ],
       ),
     );

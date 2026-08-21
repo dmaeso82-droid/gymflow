@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'app_formatters.dart';
 import 'day_utils.dart';
+
 int workoutIntValue(dynamic value, {int fallback = 0}) {
   return AppFormatters.intValue(value, fallback: fallback, extractFirstNumber: true);
 }
@@ -21,6 +22,7 @@ int workoutTotalSets(Map<String, dynamic> exercise) {
 int workoutCompletedSets(Map<String, dynamic> exercise) {
   final total = workoutTotalSets(exercise);
   final rawCompleted = AppFormatters.intValue(exercise['completedSets'], fallback: -1, extractFirstNumber: true);
+
   if (rawCompleted >= 0) return rawCompleted.clamp(0, total).toInt();
   if (exercise['done'] == true) return total;
   return 0;
@@ -32,9 +34,11 @@ bool isClosedTrainingDay(DateTime day) => day.weekday == DateTime.sunday;
 
 DateTime previousOpenTrainingDay(DateTime day) {
   var candidate = day.subtract(const Duration(days: 1));
+
   while (isClosedTrainingDay(candidate)) {
     candidate = candidate.subtract(const Duration(days: 1));
   }
+
   return candidate;
 }
 
@@ -63,11 +67,13 @@ int calculateOpenDayStreak(Set<DateTime> days) {
     streak += 1;
     currentDay = previousOpenTrainingDay(currentDay);
   }
+
   return streak;
 }
 
 DateTime? dayFromTimestamp(dynamic value) {
   if (value is! Timestamp) return null;
+
   final date = value.toDate();
   return DateTime(date.year, date.month, date.day);
 }
@@ -100,13 +106,21 @@ RoutineSetSummary routineSetSummary(List<dynamic> exercises) {
   var completedExercises = 0;
 
   for (final item in exercises) {
-    final exercise = Map<String, dynamic>.from(item as Map);
+    if (item is! Map) {
+      continue;
+    }
+
+    final exercise = Map<String, dynamic>.from(item);
     final total = workoutTotalSets(exercise);
     final completed = workoutCompletedSets(exercise).clamp(0, total).toInt();
+
     totalExercises += 1;
     totalSets += total;
     completedSets += completed;
-    if (completed >= total) completedExercises += 1;
+
+    if (completed >= total) {
+      completedExercises += 1;
+    }
   }
 
   return RoutineSetSummary(

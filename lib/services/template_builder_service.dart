@@ -194,15 +194,29 @@ class TemplateBuilderService {
   }
 
   List<Map<String, dynamic>> cloneDays(Map<String, dynamic> data) {
-    return List<Map<String, dynamic>>.from(
-      (data['days'] as List).map((day) => Map<String, dynamic>.from(day as Map)),
-    );
+    final rawDays = data['days'];
+    if (rawDays is! List) return <Map<String, dynamic>>[];
+    final days = rawDays.whereType<Map>().map((day) {
+      return Map<String, dynamic>.from(day);
+    }).toList();
+    days.sort((a, b) {
+      final aOrder = a['dayOrder'] is int
+          ? a['dayOrder'] as int
+          : localDayOrder((a['day'] ?? '').toString());
+      final bOrder = b['dayOrder'] is int
+          ? b['dayOrder'] as int
+          : localDayOrder((b['day'] ?? '').toString());
+      return aOrder.compareTo(bOrder);
+    });
+    return days;
   }
 
   List<Map<String, dynamic>> cloneExercises(Map<String, dynamic> day) {
-    return List<Map<String, dynamic>>.from(
-      (day['exercises'] as List? ?? []).map((exercise) => Map<String, dynamic>.from(exercise as Map)),
-    );
+    final rawExercises = day['exercises'];
+    if (rawExercises is! List) return <Map<String, dynamic>>[];
+    return rawExercises.whereType<Map>().map((exercise) {
+      return Map<String, dynamic>.from(exercise);
+    }).toList();
   }
 
   Future<void> editDayInfo({

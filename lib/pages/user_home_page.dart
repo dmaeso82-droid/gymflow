@@ -1,15 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../services/navigation_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_card.dart';
-import '../features/user_dashboard.dart';
 import '../services/points_service.dart';
+import '../services/achievement_service.dart';
+import '../services/notification_service.dart';
 import 'user_achievements_page.dart';
 import 'user_calendar_page.dart';
 import 'user_goals_page.dart';
 import 'user_history_page.dart';
 import 'user_measurements_page.dart';
 import 'user_progress_page.dart';
+import 'user_progress_overview_page.dart';
 import 'user_records_page.dart';
 import 'user_weekly_summary_page.dart';
 import 'settings_page.dart';
@@ -24,6 +27,7 @@ import 'progress_photos_page.dart';
 part 'user_home/next_step_card.dart';
 part 'user_home/onboarding_checklist_card.dart';
 part 'user_home/adaptive_home_sections.dart';
+part 'user_home/gamification_retention_card.dart';
 part 'user_home/primary_actions_card.dart';
 part 'user_home/secondary_actions_card.dart';
 part 'user_home/home_header.dart';
@@ -37,6 +41,7 @@ class UserHomePage extends StatelessWidget {
   final String userId;
   final String userName;
   final String userEmail;
+  final bool launchedFromTrainer;
 
   const UserHomePage({
     super.key,
@@ -44,10 +49,11 @@ class UserHomePage extends StatelessWidget {
     required this.userId,
     required this.userName,
     required this.userEmail,
+    this.launchedFromTrainer = false,
   });
 
   void openPage(BuildContext context, Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    AppNavigation.push(context, page);
   }
 
   String firstName() {
@@ -154,11 +160,22 @@ class UserHomePage extends StatelessWidget {
         onTap: () => openPage(context, UserWeeklySummaryPage(gymId: gymId, userId: userId)),
       ),
     ];
+
     final primaryActions = [
+      QuickAction(
+        icon: Icons.fitness_center_rounded,
+        title: 'Entrenar',
+        onTap: () => openPage(context, UserRoutinesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+      ),
       QuickAction(
         icon: Icons.emoji_events_rounded,
         title: 'Retos',
         onTap: () => openPage(context, ChallengesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+      ),
+      QuickAction(
+        icon: Icons.groups_rounded,
+        title: 'Comunidad',
+        onTap: () => openPage(context, CommunityPage(gymId: gymId, currentUserId: userId, currentUserName: userName, currentUserEmail: userEmail)),
       ),
       QuickAction(
         icon: Icons.chat_bubble_rounded,
@@ -168,23 +185,13 @@ class UserHomePage extends StatelessWidget {
           ConversationsPage(gymId: gymId, currentUserId: userId, currentUserName: userName, currentUserEmail: userEmail, currentRole: 'user'),
         ),
       ),
-      QuickAction(
-        icon: Icons.calendar_view_week_rounded,
-        title: 'Semana',
-        onTap: () => openPage(context, UserWeeklySummaryPage(gymId: gymId, userId: userId)),
-      ),
-      QuickAction(
-        icon: Icons.groups_rounded,
-        title: 'Comunidad',
-        onTap: () => openPage(context, CommunityPage(gymId: gymId, currentUserId: userId, currentUserName: userName, currentUserEmail: userEmail)),
-      ),
     ];
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       bottomNavigationBar: _UserBottomNav(
         onRutinas: () => openPage(context, UserRoutinesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
-        onRetos: () => openPage(context, ChallengesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+        onProgreso: () => openPage(context, UserProgressOverviewPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
         onComunidad: () => openPage(context, CommunityPage(gymId: gymId, currentUserId: userId, currentUserName: userName, currentUserEmail: userEmail)),
         onPerfil: () => openPage(context, SettingsPage(userEmail: userEmail)),
       ),
@@ -196,12 +203,21 @@ class UserHomePage extends StatelessWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-                  child: _HomeHeader(
-                    gymId: gymId,
-                    userId: userId,
-                    userEmail: userEmail,
-                    name: firstName(),
-                    onSettings: () => openPage(context, SettingsPage(userEmail: userEmail)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (launchedFromTrainer) ...[
+                        _TrainerReturnBar(onReturn: () => Navigator.pop(context)),
+                        const SizedBox(height: 10),
+                      ],
+                      _HomeHeader(
+                        gymId: gymId,
+                        userId: userId,
+                        userEmail: userEmail,
+                        name: firstName(),
+                        onSettings: () => openPage(context, SettingsPage(userEmail: userEmail)),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -209,15 +225,19 @@ class UserHomePage extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 22),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    _NextStepCard(
+                    _PrimaryActionsCard(actions: primaryActions),
+                    const SizedBox(height: 12),
+                    _GamificationRetentionCard(
                       gymId: gymId,
                       userId: userId,
+                      userName: userName,
                       userEmail: userEmail,
                       onOpenRoutines: () => openPage(context, UserRoutinesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+                      onOpenChallenges: () => openPage(context, ChallengesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
+                      onOpenAchievements: () => openPage(context, UserAchievementsPage(gymId: gymId, userId: userId, userEmail: userEmail)),
                       onOpenGoals: () => openPage(context, UserGoalsPage(gymId: gymId, userEmail: userEmail)),
-                      onOpenRanking: () => openPage(context, RankingsPage(gymId: gymId, currentUserId: userId, currentUserName: userName, currentUserEmail: userEmail)),
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _OnboardingChecklistCard(
                       gymId: gymId,
                       userId: userId,
@@ -230,7 +250,7 @@ class UserHomePage extends StatelessWidget {
                       onOpenChallenges: () => openPage(context, ChallengesPage(gymId: gymId, userId: userId, userName: userName, userEmail: userEmail)),
                       onOpenRecords: () => openPage(context, UserRecordsPage(gymId: gymId, userId: userId)),
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _AdaptiveHomeSections(
                       gymId: gymId,
                       userId: userId,
@@ -245,6 +265,42 @@ class UserHomePage extends StatelessWidget {
                     ),
                   ]),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrainerReturnBar extends StatelessWidget {
+  final VoidCallback onReturn;
+
+  const _TrainerReturnBar({required this.onReturn});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onReturn,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+          decoration: BoxDecoration(
+            color: context.gymSubtleSurface.withValues(alpha: context.gymIsDark ? 0.46 : 0.68),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.arrow_back_rounded, color: context.gymPrimary, size: 19),
+              const SizedBox(width: 8),
+              Text(
+                'Volver al panel entrenador',
+                style: TextStyle(color: context.gymPrimary, fontSize: 12.5, fontWeight: FontWeight.w900),
               ),
             ],
           ),

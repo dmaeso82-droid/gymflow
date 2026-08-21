@@ -120,7 +120,10 @@ class DuelService {
     final createdAt = readDate(log['createdAt']);
     if (createdAt == null) return false;
     if (start != null && createdAt.isBefore(start)) return false;
-    if (end != null && createdAt.isAfter(end.add(const Duration(days: 1)))) return false;
+    if (end != null) {
+      final exclusiveEnd = DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
+      if (!createdAt.isBefore(exclusiveEnd)) return false;
+    }
     return true;
   }
 
@@ -135,7 +138,8 @@ class DuelService {
       query = query.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start));
     }
     if (end != null) {
-      query = query.where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end.add(const Duration(days: 1))));
+      final exclusiveEnd = DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
+      query = query.where('createdAt', isLessThan: Timestamp.fromDate(exclusiveEnd));
     }
     final snapshot = await query.get();
     final logs = snapshot.docs.map((doc) => doc.data()).where((log) => isInsideDuelWindow(log, start, end)).toList();
@@ -170,6 +174,16 @@ class DuelService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    const allowedMetrics = {'volume_total', 'series_count', 'workout_count'};
+    if (challenger.id == opponent.id || challenger.email.toLowerCase() == opponent.email.toLowerCase()) {
+      throw ArgumentError('Los participantes del duelo deben ser distintos.');
+    }
+    if (!allowedMetrics.contains(metric) || target <= 0 || !target.isFinite || points <= 0) {
+      throw ArgumentError('La métrica, el objetivo o los puntos del duelo no son válidos.');
+    }
+    if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
+      throw ArgumentError('La fecha final no puede ser anterior a la fecha inicial.');
+    }
     final duelRef = await duelsRef.add({
       'type': 'duel',
       'metric': metric,
@@ -181,10 +195,11 @@ class DuelService {
       'opponentId': opponent.id,
       'opponentName': opponent.name,
       'opponentEmail': opponent.email,
-      'status': 'active',
+      'status': 'pending',
       'winnerId': '',
       'winnerName': '',
-      'startDate': startDate == null ? FieldValue.serverTimestamp() : Timestamp.fromDate(startDate),
+      'startDate': null,
+      'proposedStartDate': startDate == null ? null : Timestamp.fromDate(startDate),
       'endDate': endDate == null ? null : Timestamp.fromDate(endDate),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -209,20 +224,30 @@ class DuelService {
     final data = doc.data();
     final metric = data['metric']?.toString() ?? 'workout_count';
     final target = doubleValue(data['target']);
+    final status = data['status']?.toString() ?? 'pending';
+    if (status == 'pending' || status == 'declined') {
+      return const DuelProgress(challenger: 0, opponent: 0);
+    }
     final challengerEmail = (data['challengerEmail'] ?? '').toString();
     final opponentEmail = (data['opponentEmail'] ?? '').toString();
-    final start = readDate(data['startDate']);
+    final start = readDate(data['startDate']) ?? readDate(data['createdAt']);
     final end = readDate(data['endDate']);
+
+    // Si Firestore aun no ha resuelto startDate/createdAt, no evaluamos.
+    // Evita que un duelo recien creado cuente todo el historico y se complete solo.
+    if (start == null && status != 'completed') {
+      return const DuelProgress(challenger: 0, opponent: 0);
+    }
 
     final challenger = await metricProgress(userEmail: challengerEmail, metric: metric, start: start, end: end);
     final opponent = await metricProgress(userEmail: opponentEmail, metric: metric, start: start, end: end);
 
     String? winnerId;
     String? winnerName;
-    if ((data['status'] ?? 'active') == 'completed') {
+    if (status == 'completed') {
       winnerId = data['winnerId']?.toString();
       winnerName = data['winnerName']?.toString();
-    } else if (target > 0 && (challenger >= target || opponent >= target)) {
+    } else if (target > 0 && (challenger >= target || opponent >= target) && (challenger > 0 || opponent > 0)) {
       final challengerWon = challenger >= target && challenger >= opponent;
       winnerId = challengerWon ? data['challengerId']?.toString() : data['opponentId']?.toString();
       winnerName = challengerWon ? data['challengerName']?.toString() : data['opponentName']?.toString();
@@ -237,8 +262,69 @@ class DuelService {
     );
   }
 
+  Future<void> acceptDuel({
+    required String duelId,
+    required String acceptedById,
+    required String acceptedByName,
+    required String acceptedByEmail,
+  }) async {
+    final duelDoc = await duelsRef.doc(duelId).get();
+    final data = duelDoc.data();
+    if (data == null) return;
+    if ((data['status'] ?? 'pending') != 'pending') return;
+
+    await duelsRef.doc(duelId).set({
+      'status': 'active',
+      'acceptedBy': acceptedById,
+      'acceptedByName': acceptedByName,
+      'acceptedAt': FieldValue.serverTimestamp(),
+      'startDate': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await NotificationService(gymId: gymId).createNotification(
+      userId: data['challengerId']?.toString() ?? '',
+      userEmail: data['challengerEmail']?.toString() ?? '',
+      type: 'duel_accepted',
+      title: 'Duelo aceptado',
+      message: '$acceptedByName ha aceptado tu duelo. El progreso empieza a contar desde ahora.',
+      sourceId: duelId,
+    );
+  }
+
+  Future<void> declineDuel({
+    required String duelId,
+    required String declinedById,
+    required String declinedByName,
+    required String declinedByEmail,
+  }) async {
+    final duelDoc = await duelsRef.doc(duelId).get();
+    final data = duelDoc.data();
+    if (data == null) return;
+    if ((data['status'] ?? 'pending') != 'pending') return;
+
+    await duelsRef.doc(duelId).set({
+      'status': 'declined',
+      'declinedBy': declinedById,
+      'declinedByName': declinedByName,
+      'declinedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await NotificationService(gymId: gymId).createNotification(
+      userId: data['challengerId']?.toString() ?? '',
+      userEmail: data['challengerEmail']?.toString() ?? '',
+      type: 'duel_declined',
+      title: 'Duelo rechazado',
+      message: '$declinedByName ha rechazado tu duelo.',
+      sourceId: duelId,
+    );
+  }
+
   Future<void> completeDuel(String duelId, Map<String, dynamic> data, String winnerId, String winnerName) async {
     if (winnerId.isEmpty) return;
+    final currentDuel = await duelsRef.doc(duelId).get();
+    if ((currentDuel.data()?['status'] ?? 'active') == 'completed') return;
     final points = intValue(data['points'], fallback: 100);
     final winnerEmail = winnerId == data['challengerId'] ? data['challengerEmail']?.toString() ?? '' : data['opponentEmail']?.toString() ?? '';
 

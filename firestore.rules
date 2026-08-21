@@ -1,18 +1,260 @@
-rules_version='2'
-
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+    function userData(uid) {
+      return userDoc(uid).data;
+    }
+    function currentEmail() {
+      return isSignedIn() && request.auth.token.email != null ? request.auth.token.email.lower() : '';
+    }
+    function userBelongsToGym(gymId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userData(request.auth.uid).active != false
+        && userData(request.auth.uid).gymId == gymId;
+    }
+    function hasGymMembership(gymId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/gyms/$(gymId)/members/$(request.auth.uid));
+    }
+    function hasTrainerProfile(gymId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/gyms/$(gymId)/trainers/$(request.auth.uid));
+    }
+    function isGymMember(gymId) {
+      return userBelongsToGym(gymId) || hasGymMembership(gymId) || hasTrainerProfile(gymId);
+    }
+    function isGymOwner(gymId) {
+      return isGymMember(gymId)
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userData(request.auth.uid).role == 'owner';
+    }
+    function isGymTrainer(gymId) {
+      return isGymMember(gymId)
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (userData(request.auth.uid).role == 'trainer' || userData(request.auth.uid).role == 'owner');
+    }
+    function isGymAdmin(gymId) {
+      return isGymTrainer(gymId)
+        && userData(request.auth.uid).trainerRole == 'gym_admin';
+    }
+    function isOwnerUid(uid) {
+      return isSignedIn() && uid == request.auth.uid;
+    }
+    function isSameEmail(email) {
+      return isSignedIn()
+        && email is string
+        && currentEmail() != ''
+        && email.lower() == currentEmail();
+    }
+    function isClientOwner(data) {
+      return isSignedIn()
+        && (
+          data.authUid == request.auth.uid
+          || data.userId == request.auth.uid
+          || data.clientId == request.auth.uid
+          || isSameEmail(data.email)
+          || isSameEmail(data.userEmail)
+          || isSameEmail(data.clientEmail)
+        );
+    }
+    function isCreatedByCurrentUser(data) {
+      return isSignedIn()
+        && (
+          data.createdByUid == request.auth.uid
+          || data.userUid == request.auth.uid
+          || data.userId == request.auth.uid
+          || isSameEmail(data.userEmail)
+        );
+    }
+    function isCreatingOwnGym(gymId) {
+      return isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.plan is string
+        && request.resource.data.subscriptionStatus is string;
+    }
+    function isCreatingOwnSubscription(gymId) {
+      return isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.gymId == gymId
+        && request.resource.data.plan is string
+        && request.resource.data.status is string;
+    }
+    match /users/{uid} {
+      allow read: if isOwnerUid(uid) || (isSignedIn() && resource.data.gymId is string && isGymTrainer(resource.data.gymId));
+      allow create: if isOwnerUid(uid);
+      allow update: if isOwnerUid(uid)
+          && request.resource.data.gymId == resource.data.gymId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.trainerRole == resource.data.trainerRole
+          && request.resource.data.active == resource.data.active
+        || (isSignedIn()
+          && resource.data.gymId is string
+          && isGymAdmin(resource.data.gymId));
+      allow delete: if false;
+    }
+    match /subscriptions/{gymId} {
+      allow read: if isGymMember(gymId) || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create, update, delete: if false;
+      allow delete: if false;
+    }
+    match /gyms/{gymId} {
+      allow read: if isGymMember(gymId) || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isCreatingOwnGym(gymId);
+      allow update: if isGymAdmin(gymId) || isGymOwner(gymId);
+      allow delete: if isGymOwner(gymId);
+      match /invites/{inviteId} {
+        allow read: if isGymAdmin(gymId) || isGymOwner(gymId)
+          || (isSignedIn() && resource.data.email is string && resource.data.email.lower() == currentEmail());
+        allow create, update, delete: if false;
+      }
+      match /audit_logs/{auditId} {
+        allow read: if isGymAdmin(gymId) || isGymOwner(gymId);
+        allow create, update, delete: if false;
+      }
+      match /members/{memberId} {
+        allow read: if isGymMember(gymId);
+        allow create: if isSignedIn() && memberId == request.auth.uid && userBelongsToGym(gymId);
+        allow update, delete: if false;
+      }
+      match /trainers/{trainerId} {
+        allow read: if isGymMember(gymId);
+        allow create: if isSignedIn() && trainerId == request.auth.uid && userBelongsToGym(gymId);
+        allow update, delete: if false;
+      }
+      match /clients/{clientId} {
+        allow read: if isGymTrainer(gymId) || isClientOwner(resource.data);
+        allow create: if false;
+        allow update, delete: if false;
+      }
+      match /routines/{routineId} {
+        allow read: if isGymTrainer(gymId) || isClientOwner(resource.data);
+        allow create, delete: if isGymTrainer(gymId);
+        allow update: if isGymTrainer(gymId) || isClientOwner(resource.data);
+      }
+      match /workout_logs/{logId} {
+        allow read: if isGymTrainer(gymId) || isClientOwner(resource.data);
+        allow create: if isGymTrainer(gymId) || isClientOwner(request.resource.data);
+        allow update, delete: if isGymTrainer(gymId) || isClientOwner(resource.data);
+      }
+      match /user_stats/{statId} {
+        allow read: if isGymTrainer(gymId) || isOwnerUid(statId) || isClientOwner(resource.data);
+        allow write: if false;
+      }
+      match /ranking_stats/{statId} {
+        allow read: if isGymMember(gymId);
+        allow write: if false;
+      }
+      match /leaderboard/{userId} {
+        allow read: if isGymMember(gymId);
+        allow write: if false;
+      }
+      match /points_ledger/{entryId} {
+        allow read: if isGymTrainer(gymId) || resource.data.userId == request.auth.uid;
+        allow write: if false;
+      }
+      match /stripe_events/{eventId} {
+        allow read, write: if false;
+      }
+      match /user_achievements/{achievementId} {
+        allow read: if isGymTrainer(gymId) || resource.data.userId == request.auth.uid;
+        allow write: if false;
+      }
+      match /challenge_completions/{completionId} {
+        allow read: if isGymTrainer(gymId) || resource.data.userId == request.auth.uid;
+        allow write: if false;
+      }
+      match /community_posts/{postId} {
+        allow read: if isGymMember(gymId);
+        allow create: if isGymMember(gymId);
+        allow update, delete: if isGymTrainer(gymId) || isCreatedByCurrentUser(resource.data);
+        match /{subDoc=**} {
+          allow read: if isGymMember(gymId);
+          allow create: if isGymMember(gymId);
+          allow update, delete: if isGymTrainer(gymId) || isCreatedByCurrentUser(resource.data);
+        }
+      }
+      match /challenges/{challengeId} {
+        allow read: if isGymMember(gymId);
+        allow create, update, delete: if isGymTrainer(gymId);
+      }
+      match /duels/{duelId} {
+        allow read: if isGymMember(gymId);
+        allow create: if isGymMember(gymId);
+        allow update, delete: if isGymTrainer(gymId) || isCreatedByCurrentUser(resource.data) || isClientOwner(resource.data);
+      }
+      match /goals/{goalId} {
+        allow read: if isGymTrainer(gymId) || isClientOwner(resource.data);
+        allow create, update, delete: if isGymTrainer(gymId) || isClientOwner(request.resource.data) || isClientOwner(resource.data);
+      }
+      match /measurements/{measurementId} {
+        allow read: if isGymTrainer(gymId) || isClientOwner(resource.data);
+        allow create, update, delete: if isGymTrainer(gymId) || isClientOwner(request.resource.data) || isClientOwner(resource.data);
+      }
+      match /progress_photos/{photoId} {
+        allow read: if isGymTrainer(gymId) || isClientOwner(resource.data) || resource.data.shared == true;
+        allow create: if isGymTrainer(gymId) || isClientOwner(request.resource.data);
+        allow update, delete: if isGymTrainer(gymId) || isClientOwner(resource.data);
+      }
+      match /body_measurements/{measurementId} {
+        allow read: if isGymTrainer(gymId) || isClientOwner(resource.data);
+        allow create, update, delete: if isGymTrainer(gymId) || isClientOwner(request.resource.data) || isClientOwner(resource.data);
+      }
+      match /progress_photo_settings/{settingId} {
+        allow read: if isGymTrainer(gymId) || isOwnerUid(settingId) || isClientOwner(resource.data);
+        allow create: if isGymTrainer(gymId) || isOwnerUid(settingId) || isClientOwner(request.resource.data);
+        allow update, delete: if isGymTrainer(gymId) || isOwnerUid(settingId) || isClientOwner(resource.data);
+      }
+      match /notifications/{notificationId} {
+        allow read, update, delete: if isGymTrainer(gymId) || isClientOwner(resource.data) || isOwnerUid(resource.data.userId);
+        allow create: if isGymMember(gymId);
+      }
+      match /conversations/{conversationId} {
+        function isConversationParticipant(data) {
+          return isSignedIn() && data.participantIds is list && request.auth.uid in data.participantIds;
+        }
+        allow read: if isConversationParticipant(resource.data);
+        allow create: if isGymMember(gymId) && isConversationParticipant(request.resource.data);
+        allow update: if isConversationParticipant(resource.data)
+          && request.resource.data.participantIds == resource.data.participantIds;
+        allow delete: if isGymAdmin(gymId) || isGymOwner(gymId);
+        match /messages/{messageId} {
+          allow read: if isConversationParticipant(get(/databases/$(database)/documents/gyms/$(gymId)/conversations/$(conversationId)).data);
+          allow create: if isConversationParticipant(get(/databases/$(database)/documents/gyms/$(gymId)/conversations/$(conversationId)).data)
+            && request.resource.data.senderId == request.auth.uid;
+          allow update, delete: if resource.data.senderId == request.auth.uid;
+        }
+      }
+      match /chats/{chatId} {
+        allow read, create, update: if isGymMember(gymId);
+        allow delete: if isGymAdmin(gymId) || isGymOwner(gymId);
+        match /messages/{messageId} {
+          allow read, create: if isGymMember(gymId);
+          allow update, delete: if isGymTrainer(gymId) || isCreatedByCurrentUser(resource.data);
+        }
+      }
+      match /routine_templates/{templateId} {
+        allow read: if isGymTrainer(gymId);
+        allow create, update, delete: if isGymTrainer(gymId);
+      }
+      match /activity/{activityId} {
+        allow read: if isGymTrainer(gymId);
+        allow create: if isGymTrainer(gymId);
+        allow update, delete: if false;
+      }
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
     match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2026, 8, 25);
+      allow read, write: if false;
     }
   }
 }

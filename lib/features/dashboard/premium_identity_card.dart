@@ -88,29 +88,45 @@ class _PremiumIdentityCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: context.gymSubtleSurface, borderRadius: BorderRadius.circular(18), border: Border.all(color: context.gymBorder)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.flag, color: context.gymFitnessAccent, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(remaining > 0 ? 'Próximo nivel: ${nextLevelName(points)}' : 'Nivel máximo alcanzado', style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900))),
-                            Text(remaining > 0 ? '$remaining pts' : 'Top', style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: LinearProgressIndicator(value: progress, minHeight: 8, backgroundColor: context.gymProgressTrack, valueColor: AlwaysStoppedAnimation<Color>(context.gymFitnessAccent)),
-                        ),
-                      ],
+                  if (progress < 1.0) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: context.gymSubtleSurface, borderRadius: BorderRadius.circular(18), border: Border.all(color: context.gymBorder)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.flag, color: context.gymFitnessAccent, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text('Próximo nivel: ${nextLevelName(points)}', style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900))),
+                              Text('$remaining pts', style: TextStyle(color: context.gymPrimary, fontWeight: FontWeight.w900)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(value: progress, minHeight: 8, backgroundColor: context.gymProgressTrack, valueColor: AlwaysStoppedAnimation<Color>(context.gymFitnessAccent)),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: context.gymFitnessAccent.withValues(alpha: context.gymIsDark ? 0.14 : 0.10), borderRadius: BorderRadius.circular(18), border: Border.all(color: context.gymFitnessAccent.withValues(alpha: 0.22))),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: context.gymFitnessAccent, size: 19),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text('Nivel máximo alcanzado', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.gymText, fontWeight: FontWeight.w900))),
+                          Text('Top', style: TextStyle(color: context.gymFitnessAccent, fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Row(
                     children: [

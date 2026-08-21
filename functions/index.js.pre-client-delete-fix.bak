@@ -1,0 +1,1348 @@
+const {setGlobalOptions} = require("firebase-functions/v2");
+const {onCall, onRequest, HttpsError} = require("firebase-functions/v2/https");
+const {defineSecret} = require("firebase-functions/params");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore, FieldValue} = require("firebase-admin/firestore");
+const {getAuth} = require("firebase-admin/auth");
+const Stripe = require("stripe");
+
+initializeApp();
+setGlobalOptions({maxInstances: 10, region: "europe-west1"});
+
+const db = getFirestore();
+const stripeSecretKey = defineSecret("STRIPE_SECRET_KEY");
+const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
+
+const PRICE_BY_PLAN = {
+  starter: "price_1U6FMxC5LPPMWXGhEuwdGtlN",
+  pro: "price_1U6FQWC5LPPMWXGhlS6RFdxi",
+  enterprise: "price_1U6FS4C5LPPMWXGheeJtSxZb",
+};
+
+function planLimits(plan) {
+  if (plan === "enterprise") return {maxClients: 999999, maxTrainers: 999999, community: true, rankings: true, chat: true, challenges: true};
+  if (plan === "pro") return {maxClients: 500, maxTrainers: 10, community: true, rankings: true, chat: true, challenges: true};
+  if (plan === "starter") return {maxClients: 50, maxTrainers: 2, community: true, rankings: false, chat: true, challenges: false};
+  return {maxClients: 1, maxTrainers: 2, community: true, rankings: false, chat: false, challenges: false};
+}
+
+function planLimitsForFirestore(limits) {
+  return {
+    maxClients: String(limits.maxClients),
+    maxTrainers: String(limits.maxTrainers),
+    community: limits.community === true,
+    rankings: limits.rankings === true,
+    chat: limits.chat === true,
+    challenges: limits.challenges === true,
+  };
+}
+
+function normalizeGymId(value) {
+  return String(value || "").trim();
+}
+
+function normalizePlan(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function callableError(error, fallbackMessage) {
+  if (error instanceof HttpsError) return error;
+  console.error(fallbackMessage, error);
+  return new HttpsError("internal", fallbackMessage);
+}
+
+function stripeStatusToGymStatus(status) {
+  switch (status) {
+    case "active":
+      return "active";
+    case "trialing":
+      return "trial";
+    case "past_due":
+    case "unpaid":
+    case "incomplete":
+    case "incomplete_expired":
+      return "past_due";
+    case "canceled":
+      return "cancelled";
+    default:
+      return status || "past_due";
+  }
+}
+
+function firstPlanFromSubscription(subscription) {
+  const item = subscription?.items?.data?.[0];
+  const priceId = item?.price?.id || "";
+  const match = Object.entries(PRICE_BY_PLAN).find(([, value]) => value === priceId);
+  return match ? match[0] : normalizePlan(subscription?.metadata?.plan || "starter");
+}
+
+function dateFromUnixSeconds(value) {
+  if (!value) return "";
+  try {
+    return new Date(value * 1000).toISOString();
+  } catch (error) {
+    return "";
+  }
+}
+
+async function assertDocumentBelongsToGym(snapshot, gymId, label = "Documento") {
+  if (!snapshot.exists) throw new HttpsError("not-found", `${label} no encontrado.`);
+  const data = snapshot.data() || {};
+  if (data.gymId && normalizeGymId(data.gymId) !== normalizeGymId(gymId)) {
+    throw new HttpsError("permission-denied", `${label} no pertenece a este gimnasio.`);
+  }
+  return data;
+}
+
+async function assertCanManageGym(uid, gymId) {
+  const safeGymId = normalizeGymId(gymId);
+  if (!uid || !safeGymId) {
+    throw new HttpsError("invalid-argument", "Usuario o gimnasio no valido.");
+  }
+  const [userSnap, gymSnap] = await Promise.all([
+    db.collection("users").doc(uid).get(),
+    db.collection("gyms").doc(safeGymId).get(),
+  ]);
+  if (!userSnap.exists) throw new HttpsError("permission-denied", "Usuario no encontrado.");
+  if (!gymSnap.exists) throw new HttpsError("not-found", "Gimnasio no encontrado.");
+  const user = userSnap.data() || {};
+  const gym = gymSnap.data() || {};
+  const userGymId = normalizeGymId(user.gymId);
+  if (user.active === false || userGymId !== safeGymId) {
+    throw new HttpsError("permission-denied", "El usuario no pertenece a este gimnasio.");
+  }
+  const isOwner = user.role === "owner" && String(gym.ownerUid || "") === uid;
+  const isGymAdmin = user.role === "trainer" && user.trainerRole === "gym_admin";
+  if (!isOwner && !isGymAdmin) {
+    throw new HttpsError("permission-denied", "Solo el propietario o admin puede gestionar este gimnasio.");
+  }
+  return user;
+}
+
+async function upsertSubscriptionFromStripe({gymId, plan, status, billingEmail = "", stripeCustomerId = "", stripeSubscriptionId = "", currentPeriodEnd = "", eventType = "stripe_webhook", eventId = ""}) {
+  const safeGymId = normalizeGymId(gymId);
+  const safePlan = normalizePlan(plan);
+  if (!safeGymId || !PRICE_BY_PLAN[safePlan]) {
+    console.warn("Webhook Stripe ignorado por gymId o plan no válido", {gymId, plan, eventType, eventId});
+    return false;
+  }
+
+  const limits = planLimits(safePlan);
+  const now = FieldValue.serverTimestamp();
+  const gymRef = db.collection("gyms").doc(safeGymId);
+  const subRef = db.collection("subscriptions").doc(safeGymId);
+  const gymStatus = stripeStatusToGymStatus(status);
+
+  const batch = db.batch();
+  batch.set(gymRef, {
+    plan: safePlan,
+    subscriptionStatus: gymStatus,
+    stripeCustomerId,
+    stripeSubscriptionId,
+    updatedAt: now,
+  }, {merge: true});
+  batch.set(subRef, {
+    gymId: safeGymId,
+    plan: safePlan,
+    status: gymStatus,
+    billingEmail,
+    stripeCustomerId,
+    stripeSubscriptionId,
+    renewalDate: currentPeriodEnd,
+    ...planLimitsForFirestore(limits),
+    updatedAt: now,
+  }, {merge: true});
+  batch.set(gymRef.collection("audit_logs").doc(), {
+    type: eventType,
+    actorUid: "stripe",
+    actorName: "Stripe",
+    actorEmail: "",
+    target: stripeSubscriptionId || safeGymId,
+    metadata: {
+      eventId,
+      plan: safePlan,
+      status: gymStatus,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      currentPeriodEnd,
+    },
+    createdAt: now,
+  });
+  await batch.commit();
+  return true;
+}
+
+
+exports.deleteClientAuthAccount = onCall(async (request) => {
+  try {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    }
+    const gymId = normalizeGymId(request.data?.gymId);
+    const clientId = String(request.data?.clientId || "").trim();
+    const authUid = String(request.data?.authUid || "").trim();
+    if (!gymId || !clientId || !authUid) {
+      throw new HttpsError("invalid-argument", "Faltan datos del cliente.");
+    }
+    if (authUid === request.auth.uid) {
+      throw new HttpsError("failed-precondition", "No puedes eliminar tu propia cuenta desde Clientes.");
+    }
+    const manager = await assertCanManageGym(request.auth.uid, gymId);
+    const clientRef = db.collection("gyms").doc(gymId).collection("clients").doc(clientId);
+    const clientSnap = await clientRef.get();
+    if (!clientSnap.exists) {
+      throw new HttpsError("not-found", "Cliente no encontrado.");
+    }
+    const client = await assertDocumentBelongsToGym(clientSnap, gymId, "Cliente");
+    if (String(client.authUid || "").trim() !== authUid) {
+      throw new HttpsError("permission-denied", "La cuenta no corresponde al cliente indicado.");
+    }
+    const userSnap = await db.collection("users").doc(authUid).get();
+    const userData = userSnap.data() || {};
+    if (userData.role === "owner" || userData.trainerRole === "gym_admin") {
+      throw new HttpsError("failed-precondition", "No se puede eliminar una cuenta administradora desde Clientes.");
+    }
+    let authDeleted = true;
+    try {
+      await getAuth().deleteUser(authUid);
+    } catch (error) {
+      if (error?.code === "auth/user-not-found") {
+        authDeleted = false;
+      } else {
+        throw error;
+      }
+    }
+    await db.collection("gyms").doc(gymId).collection("audit_logs").add({
+      type: "client_auth_deleted",
+      actorUid: request.auth.uid,
+      actorName: manager.name || manager.email || "Admin",
+      actorEmail: String(manager.email || request.auth.token.email || "").toLowerCase(),
+      target: authUid,
+      metadata: {clientId, authDeleted},
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return {ok: true, authDeleted};
+  } catch (error) {
+    throw callableError(error, "No se pudo eliminar la cuenta de Firebase Authentication.");
+  }
+});
+
+
+function slugFromGymName(value) {
+  const normalized = String(value || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  return normalized || "gymflow-gym";
+}
+
+async function availableGymId(baseSlug) {
+  let candidate = baseSlug;
+  let index = 1;
+  while ((await db.collection("gyms").doc(candidate).get()).exists) {
+    index += 1;
+    candidate = `${baseSlug}-${index}`;
+  }
+  return candidate;
+}
+
+exports.provisionFreeGym = onCall(async (request) => {
+  try {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    const uid = request.auth.uid;
+    const ownerName = String(request.data?.ownerName || "").trim();
+    const gymName = String(request.data?.gymName || "").trim();
+    const phone = String(request.data?.phone || "").trim();
+    const address = String(request.data?.address || "").trim();
+    const email = String(request.auth.token.email || request.data?.email || "").trim().toLowerCase();
+    if (!ownerName || !gymName || !email) {
+      throw new HttpsError("invalid-argument", "Faltan nombre, gimnasio o email.");
+    }
+
+    const existingUser = await db.collection("users").doc(uid).get();
+    if (existingUser.exists) {
+      const existingGymId = normalizeGymId(existingUser.data()?.gymId);
+      if (existingGymId) return {ok: true, gymId: existingGymId, alreadyProvisioned: true};
+      throw new HttpsError("already-exists", "La cuenta ya tiene un perfil sin gimnasio válido.");
+    }
+
+    const gymId = await availableGymId(slugFromGymName(gymName));
+    const gymRef = db.collection("gyms").doc(gymId);
+    const userRef = db.collection("users").doc(uid);
+    const subscriptionRef = db.collection("subscriptions").doc(gymId);
+    const now = FieldValue.serverTimestamp();
+    const limits = planLimits("free");
+    const staffData = {
+      authUid: uid,
+      name: ownerName,
+      email,
+      role: "owner",
+      trainerRole: "gym_admin",
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const batch = db.batch();
+    batch.create(gymRef, {
+      name: gymName,
+      ownerUid: uid,
+      ownerEmail: email,
+      ownerName,
+      phone,
+      address,
+      plan: "free",
+      subscriptionStatus: "active",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    batch.create(userRef, {
+      uid,
+      name: ownerName,
+      email,
+      role: "owner",
+      trainerRole: "gym_admin",
+      gymId,
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    batch.create(gymRef.collection("trainers").doc(uid), staffData);
+    batch.create(gymRef.collection("members").doc(uid), staffData);
+    batch.create(subscriptionRef, {
+      gymId,
+      plan: "free",
+      status: "active",
+      billingEmail: email,
+      renewalDate: "",
+      ownerUid: uid,
+      ...planLimitsForFirestore(limits),
+      createdAt: now,
+      updatedAt: now,
+    });
+    batch.create(gymRef.collection("audit_logs").doc(), {
+      type: "gym_created_self_service",
+      actorUid: uid,
+      actorName: ownerName,
+      actorEmail: email,
+      target: gymId,
+      metadata: {plan: "free", status: "active", source: "free_tier"},
+      createdAt: now,
+    });
+    await batch.commit();
+    return {ok: true, gymId};
+  } catch (error) {
+    throw callableError(error, "No se pudo completar la creación del gimnasio.");
+  }
+});
+
+exports.createCheckoutSession = onCall({secrets: [stripeSecretKey]}, async (request) => {
+  try {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    const gymId = normalizeGymId(request.data?.gymId);
+    const plan = normalizePlan(request.data?.plan);
+    const origin = String(request.data?.origin || "").trim();
+    if (!gymId || !PRICE_BY_PLAN[plan]) throw new HttpsError("invalid-argument", "Plan o gimnasio no válido.");
+    if (!origin.startsWith("http")) throw new HttpsError("invalid-argument", "Origen no válido.");
+    const manager = await assertCanManageGym(request.auth.uid, gymId);
+    const gymSnap = await db.collection("gyms").doc(gymId).get();
+    if (!gymSnap.exists) throw new HttpsError("not-found", "Gimnasio no encontrado.");
+    const secretValue = stripeSecretKey.value();
+    if (!secretValue) throw new HttpsError("failed-precondition", "STRIPE_SECRET_KEY no está configurada.");
+    const stripe = Stripe(secretValue);
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [{price: PRICE_BY_PLAN[plan], quantity: 1}],
+      customer_email: manager.email || request.auth.token.email || undefined,
+      client_reference_id: gymId,
+      success_url: `${origin}?checkout=success&gymId=${encodeURIComponent(gymId)}&plan=${encodeURIComponent(plan)}`,
+      cancel_url: `${origin}?checkout=cancelled&gymId=${encodeURIComponent(gymId)}`,
+      metadata: {gymId, plan, uid: request.auth.uid},
+      subscription_data: {metadata: {gymId, plan, uid: request.auth.uid}},
+    });
+    await db.collection("gyms").doc(gymId).collection("audit_logs").add({
+      type: "stripe_checkout_created",
+      actorUid: request.auth.uid,
+      actorName: manager.name || manager.email || "Admin",
+      actorEmail: String(manager.email || request.auth.token.email || "").toLowerCase(),
+      target: session.id,
+      metadata: {plan, priceId: PRICE_BY_PLAN[plan]},
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return {url: session.url, sessionId: session.id};
+  } catch (error) {
+    throw callableError(error, "No se pudo crear la sesión de Stripe Checkout.");
+  }
+});
+
+exports.applyCheckoutPlanTest = onCall(async (request) => {
+  try {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    const gymId = normalizeGymId(request.data?.gymId);
+    const plan = normalizePlan(request.data?.plan);
+    if (!gymId || !PRICE_BY_PLAN[plan]) throw new HttpsError("invalid-argument", "Plan o gimnasio no válido.");
+    const manager = await assertCanManageGym(request.auth.uid, gymId);
+    const limits = planLimits(plan);
+    const now = FieldValue.serverTimestamp();
+    const batch = db.batch();
+    const gymRef = db.collection("gyms").doc(gymId);
+    const subRef = db.collection("subscriptions").doc(gymId);
+    batch.set(gymRef, {plan, subscriptionStatus: "active", updatedAt: now}, {merge: true});
+    batch.set(subRef, {
+      gymId,
+      plan,
+      status: "active",
+      billingEmail: manager.email || request.auth.token.email || "",
+      ...planLimitsForFirestore(limits),
+      updatedAt: now,
+    }, {merge: true});
+    batch.set(gymRef.collection("audit_logs").doc(), {
+      type: "stripe_plan_applied_test",
+      actorUid: request.auth.uid,
+      actorName: manager.name || manager.email || "Admin",
+      actorEmail: String(manager.email || request.auth.token.email || "").toLowerCase(),
+      target: gymId,
+      metadata: {plan, maxClients: String(limits.maxClients), maxTrainers: String(limits.maxTrainers)},
+      createdAt: now,
+    });
+    await batch.commit();
+    return {ok: true, plan};
+  } catch (error) {
+    throw callableError(error, "No se pudo aplicar el plan de prueba.");
+  }
+});
+
+exports.stripeWebhook = onRequest({secrets: [stripeSecretKey, stripeWebhookSecret]}, async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).send("Method Not Allowed");
+    return;
+  }
+
+  const stripe = Stripe(stripeSecretKey.value());
+  const signature = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.rawBody, signature, stripeWebhookSecret.value());
+  } catch (error) {
+    console.error("Stripe webhook signature verification failed", error);
+    res.status(400).send(`Webhook Error: ${error.message}`);
+    return;
+  }
+
+  try {
+    const eventRef = db.collection("stripe_events").doc(event.id);
+    const reserved = await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(eventRef);
+      if (existing.exists) return false;
+      transaction.create(eventRef, {
+        type: event.type,
+        status: "processing",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
+    if (!reserved) {
+      res.json({received: true, duplicate: true});
+      return;
+    }
+
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const gymId = normalizeGymId(session.metadata?.gymId || session.client_reference_id);
+        const plan = normalizePlan(session.metadata?.plan);
+        const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id || "";
+        let subscription = null;
+        if (subscriptionId) {
+          subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        }
+        await upsertSubscriptionFromStripe({
+          gymId,
+          plan: plan || firstPlanFromSubscription(subscription),
+          status: subscription?.status || "active",
+          billingEmail: session.customer_details?.email || session.customer_email || "",
+          stripeCustomerId: typeof session.customer === "string" ? session.customer : session.customer?.id || "",
+          stripeSubscriptionId: subscriptionId,
+          currentPeriodEnd: dateFromUnixSeconds(subscription?.current_period_end),
+          eventType: event.type,
+          eventId: event.id,
+        });
+        break;
+      }
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object;
+        const gymId = normalizeGymId(subscription.metadata?.gymId);
+        const plan = firstPlanFromSubscription(subscription);
+        await upsertSubscriptionFromStripe({
+          gymId,
+          plan,
+          status: subscription.status,
+          billingEmail: subscription.customer_email || "",
+          stripeCustomerId: typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id || "",
+          stripeSubscriptionId: subscription.id || "",
+          currentPeriodEnd: dateFromUnixSeconds(subscription.current_period_end),
+          eventType: event.type,
+          eventId: event.id,
+        });
+        break;
+      }
+      case "invoice.payment_failed": {
+        const invoice = event.data.object;
+        const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id || "";
+        let subscription = null;
+        if (subscriptionId) {
+          subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        }
+        const gymId = normalizeGymId(subscription?.metadata?.gymId || invoice.metadata?.gymId);
+        const plan = firstPlanFromSubscription(subscription);
+        await upsertSubscriptionFromStripe({
+          gymId,
+          plan,
+          status: "past_due",
+          billingEmail: invoice.customer_email || "",
+          stripeCustomerId: typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || "",
+          stripeSubscriptionId: subscriptionId,
+          currentPeriodEnd: dateFromUnixSeconds(subscription?.current_period_end),
+          eventType: event.type,
+          eventId: event.id,
+        });
+        break;
+      }
+      default:
+        console.log(`Stripe webhook ignored: ${event.type}`);
+    }
+
+    await db.collection("stripe_events").doc(event.id).set({
+      status: "completed",
+      completedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    res.json({received: true});
+  } catch (error) {
+    if (event?.id) {
+      await db.collection("stripe_events").doc(event.id).set({
+        status: "failed",
+        failedAt: FieldValue.serverTimestamp(),
+        error: String(error?.message || error),
+      }, {merge: true});
+    }
+    console.error("Stripe webhook processing failed", error);
+    res.status(500).send("Stripe webhook processing failed");
+  }
+});
+
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function safePositiveInt(value, field) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new HttpsError("invalid-argument", `${field} no es valido.`);
+  }
+  return number;
+}
+
+function safeNonNegativeNumber(value, field) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) {
+    throw new HttpsError("invalid-argument", `${field} no es valido.`);
+  }
+  return number;
+}
+
+async function authenticatedGymUser(request, requestedGymId) {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesion.");
+  const gymId = normalizeGymId(requestedGymId);
+  if (!gymId) throw new HttpsError("invalid-argument", "Falta el gimnasio.");
+  const [userSnap, gymSnap] = await Promise.all([
+    db.collection("users").doc(request.auth.uid).get(),
+    db.collection("gyms").doc(gymId).get(),
+  ]);
+  if (!userSnap.exists) throw new HttpsError("permission-denied", "Usuario no encontrado.");
+  if (!gymSnap.exists) throw new HttpsError("not-found", "Gimnasio no encontrado.");
+  const user = userSnap.data() || {};
+  if (user.active === false || normalizeGymId(user.gymId) !== gymId) {
+    throw new HttpsError("permission-denied", "No perteneces a este gimnasio.");
+  }
+  return {uid: request.auth.uid, gymId, user, gym: gymSnap.data() || {}};
+}
+
+async function assertActiveFeature(gymId, feature = "") {
+  const snap = await db.collection("subscriptions").doc(gymId).get();
+  if (!snap.exists) throw new HttpsError("failed-precondition", "La suscripcion no existe.");
+  const subscription = snap.data() || {};
+  if (!["active", "trial"].includes(String(subscription.status || ""))) {
+    throw new HttpsError("failed-precondition", "La suscripcion no esta activa.");
+  }
+  if (feature && subscription.plan !== "enterprise" && subscription[feature] !== true) {
+    throw new HttpsError("permission-denied", "La funcion no esta incluida en el plan.");
+  }
+  return subscription;
+}
+
+function periodKeys(date = new Date()) {
+  return {
+    monthKey: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`,
+    yearKey: String(date.getUTCFullYear()),
+  };
+}
+
+async function awardPointsServer({gymId, uid, user, points, sourceType, sourceId, metadata = {}}) {
+  const cleanType = String(sourceType || "").trim();
+  const cleanId = String(sourceId || "").trim();
+  if (!cleanType || !cleanId) throw new HttpsError("invalid-argument", "Falta el origen de los puntos.");
+  const safePoints = safePositiveInt(points, "points");
+  const ledgerId = `${uid}_${cleanType}_${cleanId}`.replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const gymRef = db.collection("gyms").doc(gymId);
+  const ledgerRef = gymRef.collection("points_ledger").doc(ledgerId);
+  const leaderboardRef = gymRef.collection("leaderboard").doc(uid);
+  const userStatsRef = gymRef.collection("user_stats").doc(uid);
+  const rankingStatsRef = gymRef.collection("ranking_stats").doc(uid);
+  const {monthKey, yearKey} = periodKeys();
+  return db.runTransaction(async (transaction) => {
+    const [ledgerSnap, boardSnap] = await Promise.all([
+      transaction.get(ledgerRef),
+      transaction.get(leaderboardRef),
+    ]);
+    if (ledgerSnap.exists) return false;
+    const current = boardSnap.data() || {};
+    const monthlyBase = current.monthKey === monthKey ? Number(current.monthlyPoints || 0) : 0;
+    const yearlyBase = current.yearKey === yearKey ? Number(current.yearlyPoints || 0) : 0;
+    const common = {
+      userId: uid,
+      userName: String(user.name || requestNameFallback(user)),
+      userEmail: normalizeEmail(user.email),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    transaction.create(ledgerRef, {...common, points: safePoints, sourceType: cleanType, sourceId: cleanId, metadata, createdAt: FieldValue.serverTimestamp()});
+    transaction.set(leaderboardRef, {...common, monthKey, yearKey, monthlyPoints: monthlyBase + safePoints, yearlyPoints: yearlyBase + safePoints, allTimePoints: Number(current.allTimePoints || 0) + safePoints, lastPointsSourceType: cleanType, lastPointsSourceId: cleanId}, {merge: true});
+    transaction.set(userStatsRef, {...common, points: FieldValue.increment(safePoints), lastPointsSourceType: cleanType, lastPointsSourceId: cleanId}, {merge: true});
+    transaction.set(rankingStatsRef, {...common, points: FieldValue.increment(safePoints), lastPointsSourceType: cleanType, lastPointsSourceId: cleanId}, {merge: true});
+    return true;
+  });
+}
+
+function requestNameFallback(user) {
+  return user.displayName || user.email || "Usuario";
+}
+
+exports.awardPointsSecure = onCall(async (request) => {
+  try {
+    const identity = await authenticatedGymUser(request, request.data?.gymId);
+    await assertActiveFeature(identity.gymId, "rankings");
+    const awarded = await awardPointsServer({
+      gymId: identity.gymId,
+      uid: identity.uid,
+      user: identity.user,
+      points: request.data?.points,
+      sourceType: request.data?.sourceType,
+      sourceId: request.data?.sourceId,
+      metadata: request.data?.metadata && typeof request.data.metadata === "object" ? request.data.metadata : {},
+    });
+    return {ok: true, awarded};
+  } catch (error) {
+    throw callableError(error, "No se pudieron conceder los puntos.");
+  }
+});
+
+exports.recordWorkoutSetSecure = onCall(async (request) => {
+  try {
+    const identity = await authenticatedGymUser(request, request.data?.gymId);
+    await assertActiveFeature(identity.gymId);
+    const routineId = String(request.data?.routineId || "").trim();
+    const exerciseId = String(request.data?.exerciseId || "").trim();
+    const setNumber = safePositiveInt(request.data?.setNumber, "setNumber");
+    const reps = safePositiveInt(request.data?.reps, "reps");
+    const weight = safeNonNegativeNumber(request.data?.weight, "weight");
+    if (!routineId || !exerciseId) throw new HttpsError("invalid-argument", "Falta rutina o ejercicio.");
+    const routineRef = db.collection("gyms").doc(identity.gymId).collection("routines").doc(routineId);
+    const logId = `${identity.uid}_${routineId}_${exerciseId}_${setNumber}`.replace(/[^a-zA-Z0-9_-]+/g, "_");
+    const logRef = db.collection("gyms").doc(identity.gymId).collection("workout_logs").doc(logId);
+    const statsRef = db.collection("gyms").doc(identity.gymId).collection("user_stats").doc(identity.uid);
+    const rankingRef = db.collection("gyms").doc(identity.gymId).collection("ranking_stats").doc(identity.uid);
+    const result = await db.runTransaction(async (transaction) => {
+      const [existing, routineSnap] = await Promise.all([transaction.get(logRef), transaction.get(routineRef)]);
+      if (existing.exists) return false;
+      if (!routineSnap.exists) throw new HttpsError("not-found", "Rutina no encontrada.");
+      const routine = routineSnap.data() || {};
+      const ownsRoutine = String(routine.clientId || "") === identity.uid || normalizeEmail(routine.clientEmail) === normalizeEmail(identity.user.email);
+      if (!ownsRoutine && identity.user.role !== "trainer" && identity.user.role !== "owner") {
+        throw new HttpsError("permission-denied", "La rutina no pertenece al usuario.");
+      }
+      const volume = weight * reps;
+      const common = {userId: identity.uid, userName: String(identity.user.name || requestNameFallback(identity.user)), userEmail: normalizeEmail(identity.user.email), updatedAt: FieldValue.serverTimestamp()};
+      transaction.create(logRef, {...common, routineId, routineTitle: String(request.data?.routineTitle || routine.title || "Rutina"), exerciseId, exercise: String(request.data?.exerciseName || "Ejercicio"), weight, reps, setNumber, plannedSetCount: Number(request.data?.plannedSetCount || 0), createdAt: FieldValue.serverTimestamp()});
+      const increments = {...common, series: FieldValue.increment(1), reps: FieldValue.increment(reps), volume: FieldValue.increment(volume), updatedAt: FieldValue.serverTimestamp()};
+      transaction.set(statsRef, increments, {merge: true});
+      transaction.set(rankingRef, increments, {merge: true});
+      return true;
+    });
+    return {ok: true, created: result, logId};
+  } catch (error) {
+    throw callableError(error, "No se pudo registrar la serie.");
+  }
+});
+
+const ACHIEVEMENTS = [
+  ["first_workout", "Primer entrenamiento", "Completa tu primer entrenamiento.", "workouts", 1, "workout"],
+  ["workouts_10", "10 entrenamientos", "Completa 10 entrenamientos.", "workouts", 10, "workout"],
+  ["workouts_50", "50 entrenamientos", "Completa 50 entrenamientos.", "workouts", 50, "trophy"],
+  ["workouts_100", "100 entrenamientos", "Completa 100 entrenamientos.", "workouts", 100, "trophy"],
+  ["series_10", "10 series registradas", "Registra 10 series.", "series", 10, "series"],
+  ["series_50", "50 series registradas", "Registra 50 series.", "series", 50, "series"],
+  ["series_100", "100 series registradas", "Registra 100 series.", "series", 100, "series"],
+  ["volume_10000", "10.000 kg movidos", "Acumula 10.000 kg de volumen.", "volume", 10000, "volume"],
+  ["volume_50000", "50.000 kg movidos", "Acumula 50.000 kg de volumen.", "volume", 50000, "volume"],
+  ["volume_100000", "100.000 kg movidos", "Acumula 100.000 kg de volumen.", "volume", 100000, "volume"],
+  ["streak_7", "Racha de 7 días", "Entrena 7 días de apertura seguidos.", "streak", 7, "streak"],
+  ["streak_30", "Racha de 30 días", "Entrena 30 días de apertura seguidos.", "streak", 30, "streak"],
+  ["exercises_10", "10 ejercicios diferentes", "Registra 10 ejercicios diferentes.", "exercises", 10, "exercise"],
+  ["first_progress_photo", "Primera foto de progreso", "Sube tu primera foto de progreso.", "photos", 1, "photo"],
+  ["progress_photos_10", "10 fotos de progreso", "Sube 10 fotos de progreso.", "photos", 10, "photo"],
+  ["progress_photos_25", "25 fotos de progreso", "Sube 25 fotos de progreso.", "photos", 25, "photo"],
+  ["first_transformation_shared", "Primera transformación compartida", "Comparte tu primera transformación.", "transformations", 1, "transformation"],
+  ["transformations_3", "3 transformaciones compartidas", "Comparte 3 transformaciones.", "transformations", 3, "transformation"],
+  ["transformations_10", "10 transformaciones compartidas", "Comparte 10 transformaciones.", "transformations", 10, "transformation"],
+].map(([id, title, description, metric, target, iconKey]) => ({id, title, description, metric, target, iconKey}));
+
+async function countQuery(query) {
+  const snap = await query.count().get();
+  return snap.data().count;
+}
+
+async function secureUserStats(gymId, uid) {
+  const gymRef = db.collection("gyms").doc(gymId);
+  const statsSnap = await gymRef.collection("user_stats").doc(uid).get();
+  const data = statsSnap.data() || {};
+  const [photos, transformations, completedGoals, measurements] = await Promise.all([
+    countQuery(gymRef.collection("progress_photos").where("userId", "==", uid)),
+    countQuery(gymRef.collection("community_posts").where("type", "==", "transformation_post").where("userId", "==", uid)),
+    countQuery(gymRef.collection("goals").where("userId", "==", uid).where("completed", "==", true)),
+    countQuery(gymRef.collection("body_measurements").where("userId", "==", uid)),
+  ]);
+  return {
+    workouts: Number(data.workouts || 0), series: Number(data.series || 0),
+    volume: Number(data.volume || 0), streak: Number(data.currentStreak || 0),
+    exercises: Number(data.exerciseCount || 0), photos, transformations,
+    completedGoals, measurements,
+  };
+}
+
+function achievementValue(stats, metric) {
+  return Number(stats[metric] || 0);
+}
+
+async function createServerNotification(gymRef, uid, user, type, title, message, sourceId, metadata) {
+  await gymRef.collection("notifications").add({
+    userId: uid, userEmail: normalizeEmail(user.email), type, title, message,
+    sourceId, metadata: metadata || {}, read: false,
+    createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+exports.evaluateAchievementsSecure = onCall(async (request) => {
+  try {
+    const identity = await authenticatedGymUser(request, request.data?.gymId);
+    await assertActiveFeature(identity.gymId);
+    const requested = Array.isArray(request.data?.metrics) ? new Set(request.data.metrics.map(String)) : null;
+    const stats = await secureUserStats(identity.gymId, identity.uid);
+    const gymRef = db.collection("gyms").doc(identity.gymId);
+    const unlocked = [];
+    for (const definition of ACHIEVEMENTS) {
+      if (requested && !requested.has(definition.metric)) continue;
+      const current = achievementValue(stats, definition.metric);
+      if (current < definition.target) continue;
+      const ref = gymRef.collection("user_achievements").doc(`${identity.uid}_${definition.id}`);
+      const created = await db.runTransaction(async (transaction) => {
+        if ((await transaction.get(ref)).exists) return false;
+        transaction.create(ref, {
+          achievementId: definition.id, userId: identity.uid,
+          userName: String(identity.user.name || requestNameFallback(identity.user)),
+          userEmail: normalizeEmail(identity.user.email), ...definition, current,
+          unlockedAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+      if (!created) continue;
+      const metadata = {...definition, current};
+      await awardPointsServer({gymId: identity.gymId, uid: identity.uid, user: identity.user, points: 25, sourceType: "achievement_unlocked", sourceId: definition.id, metadata});
+      await createServerNotification(gymRef, identity.uid, identity.user, "achievement_unlocked", "Logro desbloqueado", `${definition.title} conseguido.`, definition.id, metadata);
+      unlocked.push(metadata);
+    }
+    return {ok: true, unlocked};
+  } catch (error) {
+    throw callableError(error, "No se pudieron evaluar los logros.");
+  }
+});
+
+function challengeProgress(type, stats) {
+  const values = {volume_total: stats.volume, series_count: stats.series, streak_days: stats.streak, goals_completed: stats.completedGoals, measurements_count: stats.measurements, workout_count: stats.workouts};
+  return Number(values[type] || 0);
+}
+
+exports.completeChallengesSecure = onCall(async (request) => {
+  try {
+    const identity = await authenticatedGymUser(request, request.data?.gymId);
+    await assertActiveFeature(identity.gymId, "challenges");
+    const gymRef = db.collection("gyms").doc(identity.gymId);
+    const [stats, challenges] = await Promise.all([secureUserStats(identity.gymId, identity.uid), gymRef.collection("challenges").where("active", "==", true).get()]);
+    const completed = [];
+    for (const doc of challenges.docs) {
+      const challenge = doc.data() || {};
+      const target = Number(challenge.target || 0);
+      const progress = challengeProgress(String(challenge.type || "workout_count"), stats);
+      if (target <= 0 || progress < target) continue;
+      const ref = gymRef.collection("challenge_completions").doc(`${identity.uid}_${doc.id}`);
+      const created = await db.runTransaction(async (transaction) => {
+        if ((await transaction.get(ref)).exists) return false;
+        transaction.create(ref, {challengeId: doc.id, challengeTitle: String(challenge.title || "Reto"), challengeType: String(challenge.type || "workout_count"), target, progress, userId: identity.uid, userName: String(identity.user.name || requestNameFallback(identity.user)), userEmail: normalizeEmail(identity.user.email), points: 75, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()});
+        return true;
+      });
+      if (!created) continue;
+      const metadata = {challengeId: doc.id, challengeTitle: String(challenge.title || "Reto"), challengeType: String(challenge.type || "workout_count"), progress, target};
+      await awardPointsServer({gymId: identity.gymId, uid: identity.uid, user: identity.user, points: 75, sourceType: "challenge_completed", sourceId: doc.id, metadata});
+      await createServerNotification(gymRef, identity.uid, identity.user, "challenge_completed", "Reto completado", `Has completado "${metadata.challengeTitle}" y sumas 75 puntos.`, doc.id, metadata);
+      completed.push(metadata);
+    }
+    return {ok: true, completed};
+  } catch (error) {
+    throw callableError(error, "No se pudieron completar los retos.");
+  }
+});
+
+function normalizeProvisionEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function validateProvisionData(data) {
+  const name = String(data?.name || "").trim();
+  const email = normalizeProvisionEmail(data?.email);
+  if (name.length < 2 || name.length > 120) {
+    throw new HttpsError("invalid-argument", "El nombre no es válido.");
+  }
+  if (!email || !email.includes("@") || email.length > 254) {
+    throw new HttpsError("invalid-argument", "El email no es válido.");
+  }
+  return {name, email};
+}
+
+async function activeSubscriptionWithLimits(gymId) {
+  const snapshot = await db.collection("subscriptions").doc(gymId).get();
+  if (!snapshot.exists) {
+    throw new HttpsError("failed-precondition", "La suscripción no existe.");
+  }
+  const subscription = snapshot.data() || {};
+  if (!["active", "trial"].includes(String(subscription.status || ""))) {
+    throw new HttpsError("failed-precondition", "La suscripción del gimnasio no está activa.");
+  }
+  const defaults = planLimits(String(subscription.plan || "free"));
+  const maxClients = Number.parseInt(String(subscription.maxClients || defaults.maxClients), 10);
+  const maxTrainers = Number.parseInt(String(subscription.maxTrainers || defaults.maxTrainers), 10);
+  return {
+    ...subscription,
+    maxClients: Number.isFinite(maxClients) ? maxClients : defaults.maxClients,
+    maxTrainers: Number.isFinite(maxTrainers) ? maxTrainers : defaults.maxTrainers,
+  };
+}
+
+async function assertProvisionManager(request, gymId) {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+  const manager = await assertCanManageGym(request.auth.uid, gymId);
+  return {uid: request.auth.uid, data: manager};
+}
+
+function randomTemporaryPassword() {
+  const crypto = require("crypto");
+  return `Gf!${crypto.randomBytes(24).toString("base64url")}9a`;
+}
+
+async function createAuthUserForGym({name, email}) {
+  try {
+    return await getAuth().createUser({
+      email,
+      password: randomTemporaryPassword(),
+      displayName: name,
+      emailVerified: false,
+      disabled: false,
+    });
+  } catch (error) {
+    if (error?.code === "auth/email-already-exists") {
+      throw new HttpsError("already-exists", "Ese email ya existe en Firebase Authentication.");
+    }
+    throw error;
+  }
+}
+
+exports.provisionClientSecure = onCall(async (request) => {
+  let createdUid = "";
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const {name, email} = validateProvisionData(request.data);
+    const goal = String(request.data?.goal || "").trim() || "Objetivo pendiente";
+    if (!gymId) throw new HttpsError("invalid-argument", "Falta el gimnasio.");
+    const manager = await assertProvisionManager(request, gymId);
+    const subscription = await activeSubscriptionWithLimits(gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const duplicate = await gymRef.collection("clients").where("email", "==", email).limit(1).get();
+    if (!duplicate.empty) throw new HttpsError("already-exists", "Ya existe un cliente con ese email en este gimnasio.");
+    const current = await gymRef.collection("clients").count().get();
+    if (current.data().count >= subscription.maxClients) {
+      throw new HttpsError("resource-exhausted", `El plan permite hasta ${subscription.maxClients} clientes.`);
+    }
+    const authUser = await createAuthUserForGym({name, email});
+    createdUid = authUser.uid;
+    const now = FieldValue.serverTimestamp();
+    const clientRef = gymRef.collection("clients").doc();
+    const actorName = String(manager.data.name || manager.data.email || "Admin");
+    const commonAudit = {createdBy: actorName, createdByUid: manager.uid, updatedBy: actorName, updatedByUid: manager.uid, createdAt: now, updatedAt: now};
+    const batch = db.batch();
+    batch.create(clientRef, {name, email, goal, level: "Nuevo", authUid: createdUid, accountStatus: "invited", gymId, ...commonAudit});
+    batch.create(db.collection("users").doc(createdUid), {uid: createdUid, name, email, role: "user", gymId, active: true, createdByTrainer: true, createdBy: actorName, createdByUid: manager.uid, createdAt: now, updatedAt: now});
+    batch.create(gymRef.collection("members").doc(createdUid), {authUid: createdUid, name, email, role: "user", active: true, createdBy: actorName, createdByUid: manager.uid, createdAt: now, updatedAt: now});
+    batch.create(gymRef.collection("activity").doc(), {type: "client_created", target: name, targetId: clientRef.id, targetEmail: email, user: actorName, userUid: manager.uid, userEmail: normalizeProvisionEmail(manager.data.email), metadata: {goal}, createdAt: now});
+    batch.set(gymRef, {updatedAt: now}, {merge: true});
+    await batch.commit();
+    return {ok: true, uid: createdUid, clientId: clientRef.id, email};
+  } catch (error) {
+    if (createdUid) {
+      try { await getAuth().deleteUser(createdUid); } catch (rollbackError) { console.error("Rollback Auth cliente falló", rollbackError); }
+    }
+    throw callableError(error, "No se pudo crear el cliente.");
+  }
+});
+
+exports.provisionTrainerSecure = onCall(async (request) => {
+  let createdUid = "";
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const {name, email} = validateProvisionData(request.data);
+    const trainerRole = String(request.data?.trainerRole || "trainer").trim();
+    if (!gymId) throw new HttpsError("invalid-argument", "Falta el gimnasio.");
+    if (!["trainer", "gym_admin"].includes(trainerRole)) {
+      throw new HttpsError("invalid-argument", "El rol de entrenador no es válido.");
+    }
+    const manager = await assertProvisionManager(request, gymId);
+    const subscription = await activeSubscriptionWithLimits(gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const duplicate = await gymRef.collection("trainers").where("email", "==", email).limit(1).get();
+    if (!duplicate.empty) throw new HttpsError("already-exists", "Ya existe un entrenador con ese email en este gimnasio.");
+    const current = await gymRef.collection("trainers").where("active", "==", true).count().get();
+    if (current.data().count >= subscription.maxTrainers) {
+      throw new HttpsError("resource-exhausted", `El plan permite hasta ${subscription.maxTrainers} entrenadores activos.`);
+    }
+    const authUser = await createAuthUserForGym({name, email});
+    createdUid = authUser.uid;
+    const now = FieldValue.serverTimestamp();
+    const actorName = String(manager.data.name || manager.data.email || "Admin");
+    const staff = {authUid: createdUid, name, email, role: "trainer", trainerRole, active: true, createdBy: actorName, createdByUid: manager.uid, createdAt: now, updatedAt: now};
+    const batch = db.batch();
+    batch.create(db.collection("users").doc(createdUid), {uid: createdUid, ...staff, gymId});
+    batch.create(gymRef.collection("trainers").doc(createdUid), staff);
+    batch.create(gymRef.collection("members").doc(createdUid), staff);
+    batch.create(gymRef.collection("audit_logs").doc(), {type: "trainer_created", actorUid: manager.uid, actorName, actorEmail: normalizeProvisionEmail(manager.data.email), target: createdUid, metadata: {email, trainerRole}, createdAt: now});
+    batch.set(gymRef, {updatedAt: now}, {merge: true});
+    await batch.commit();
+    return {ok: true, uid: createdUid, email};
+  } catch (error) {
+    if (createdUid) {
+      try { await getAuth().deleteUser(createdUid); } catch (rollbackError) { console.error("Rollback Auth entrenador falló", rollbackError); }
+    }
+    throw callableError(error, "No se pudo crear el entrenador.");
+  }
+});
+
+async function deleteQueryInBatches(query, counter) {
+  let deleted = 0;
+  while (true) {
+    const snapshot = await query.limit(200).get();
+    if (snapshot.empty) break;
+    const batch = db.batch();
+    for (const doc of snapshot.docs) batch.delete(doc.ref);
+    await batch.commit();
+    deleted += snapshot.size;
+    if (snapshot.size < 200) break;
+  }
+  counter.count += deleted;
+}
+
+async function deleteDocumentIfPresent(ref, counter) {
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return;
+  await ref.delete();
+  counter.count += 1;
+}
+
+async function removeUserDataFromGym({gymId, uid, email, clientId = ""}) {
+  const gymRef = db.collection("gyms").doc(gymId);
+  const counter = {count: 0};
+  const collections = [
+    "workout_logs", "goals", "measurements", "body_measurements",
+    "user_achievements", "challenge_completions", "points_ledger",
+    "notifications", "community_posts", "ranking_stats", "leaderboard",
+    "user_stats", "progress_photo_settings", "routines",
+  ];
+  const directKeys = new Set([uid, clientId].filter(Boolean));
+  for (const key of directKeys) {
+    for (const name of ["user_stats", "ranking_stats", "leaderboard", "progress_photo_settings"]) {
+      await deleteDocumentIfPresent(gymRef.collection(name).doc(key), counter);
+    }
+  }
+  for (const collectionName of collections) {
+    const collection = gymRef.collection(collectionName);
+    if (clientId) await deleteQueryInBatches(collection.where("clientId", "==", clientId), counter);
+    if (uid) {
+      await deleteQueryInBatches(collection.where("userId", "==", uid), counter);
+      await deleteQueryInBatches(collection.where("authUid", "==", uid), counter);
+    }
+    if (email) {
+      await deleteQueryInBatches(collection.where("email", "==", email), counter);
+      await deleteQueryInBatches(collection.where("userEmail", "==", email), counter);
+      await deleteQueryInBatches(collection.where("clientEmail", "==", email), counter);
+      await deleteQueryInBatches(collection.where("targetEmail", "==", email), counter);
+    }
+  }
+  if (uid) {
+    await deleteDocumentIfPresent(gymRef.collection("members").doc(uid), counter);
+    await deleteDocumentIfPresent(db.collection("users").doc(uid), counter);
+  }
+  return counter.count;
+}
+
+exports.deleteClientSecure = onCall(async (request) => {
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const clientId = String(request.data?.clientId || "").trim();
+    if (!gymId || !clientId) throw new HttpsError("invalid-argument", "Falta el gimnasio o el cliente.");
+    const manager = await assertProvisionManager(request, gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const clientRef = gymRef.collection("clients").doc(clientId);
+    const clientSnap = await clientRef.get();
+    if (!clientSnap.exists) throw new HttpsError("not-found", "Cliente no encontrado.");
+    const client = await assertDocumentBelongsToGym(clientSnap, gymId, "Cliente");
+    const uid = String(client.authUid || "").trim();
+    const email = normalizeProvisionEmail(client.email);
+    if (uid && uid === request.auth.uid) throw new HttpsError("failed-precondition", "No puedes eliminar tu propia cuenta.");
+    if (uid) {
+      const userSnap = await db.collection("users").doc(uid).get();
+      const user = userSnap.data() || {};
+      if (user.role === "owner" || user.trainerRole === "gym_admin") {
+        throw new HttpsError("failed-precondition", "No se puede eliminar una cuenta administradora desde Clientes.");
+      }
+    }
+    const deletedRelatedDocs = await removeUserDataFromGym({gymId, uid, email, clientId});
+    await clientRef.delete();
+    let authDeleted = false;
+    if (uid) {
+      try { await getAuth().deleteUser(uid); authDeleted = true; }
+      catch (error) { if (error?.code !== "auth/user-not-found") throw error; }
+    }
+    await gymRef.collection("audit_logs").add({
+      type: "client_deleted_secure", actorUid: manager.uid,
+      actorName: String(manager.data.name || manager.data.email || "Admin"),
+      actorEmail: normalizeProvisionEmail(manager.data.email), target: clientId,
+      metadata: {uid, email, deletedRelatedDocs, authDeleted},
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return {ok: true, deletedRelatedDocs, authDeleted};
+  } catch (error) {
+    throw callableError(error, "No se pudo eliminar el cliente.");
+  }
+});
+
+exports.deleteTrainerSecure = onCall(async (request) => {
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const trainerUid = String(request.data?.trainerUid || "").trim();
+    if (!gymId || !trainerUid) throw new HttpsError("invalid-argument", "Falta el gimnasio o el entrenador.");
+    if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    if (trainerUid === request.auth.uid) throw new HttpsError("failed-precondition", "No puedes eliminar tu propia cuenta.");
+    const manager = await assertProvisionManager(request, gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const trainerRef = gymRef.collection("trainers").doc(trainerUid);
+    const trainerSnap = await trainerRef.get();
+    if (!trainerSnap.exists) throw new HttpsError("not-found", "Entrenador no encontrado.");
+    const trainer = await assertDocumentBelongsToGym(trainerSnap, gymId, "Entrenador");
+    const userSnap = await db.collection("users").doc(trainerUid).get();
+    const user = userSnap.data() || {};
+    if (user.role === "owner" || trainer.role === "owner") {
+      throw new HttpsError("failed-precondition", "No se puede eliminar al propietario del gimnasio.");
+    }
+    if (trainer.trainerRole === "gym_admin" && manager.data.role !== "owner") {
+      throw new HttpsError("permission-denied", "Solo el propietario puede eliminar a un administrador.");
+    }
+    const email = normalizeProvisionEmail(trainer.email || user.email);
+    const deletedRelatedDocs = await removeUserDataFromGym({gymId, uid: trainerUid, email});
+    await trainerRef.delete();
+    let authDeleted = false;
+    try { await getAuth().deleteUser(trainerUid); authDeleted = true; }
+    catch (error) { if (error?.code !== "auth/user-not-found") throw error; }
+    await gymRef.collection("audit_logs").add({
+      type: "trainer_deleted_secure", actorUid: manager.uid,
+      actorName: String(manager.data.name || manager.data.email || "Admin"),
+      actorEmail: normalizeProvisionEmail(manager.data.email), target: trainerUid,
+      metadata: {email, trainerRole: trainer.trainerRole || "trainer", deletedRelatedDocs, authDeleted},
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return {ok: true, deletedRelatedDocs, authDeleted};
+  } catch (error) {
+    throw callableError(error, "No se pudo eliminar el entrenador.");
+  }
+});
+
+
+
+function firestoreTimestampMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  return 0;
+}
+
+function inviteRoleLimits(subscription, role) {
+  return role === "user" ? subscription.maxClients : subscription.maxTrainers;
+}
+
+async function currentMemberCount(gymRef, role) {
+  if (role === "user") return (await gymRef.collection("clients").count().get()).data().count;
+  return (await gymRef.collection("trainers").where("active", "==", true).count().get()).data().count;
+}
+
+exports.createInviteSecure = onCall(async (request) => {
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const {name, email} = validateProvisionData(request.data);
+    const role = String(request.data?.role || "user").trim();
+    const trainerRole = String(request.data?.trainerRole || "trainer").trim();
+    if (!gymId) throw new HttpsError("invalid-argument", "Falta el gimnasio.");
+    if (!["user", "trainer"].includes(role)) throw new HttpsError("invalid-argument", "El rol de la invitación no es válido.");
+    if (role === "trainer" && !["trainer", "gym_admin"].includes(trainerRole)) throw new HttpsError("invalid-argument", "El rol de entrenador no es válido.");
+    const manager = await assertProvisionManager(request, gymId);
+    const subscription = await activeSubscriptionWithLimits(gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const limit = inviteRoleLimits(subscription, role);
+    const current = await currentMemberCount(gymRef, role);
+    if (current >= limit) throw new HttpsError("resource-exhausted", `El plan no permite más ${role === "user" ? "clientes" : "entrenadores"}.`);
+    const pending = await gymRef.collection("invites").where("email", "==", email).where("status", "==", "pending").limit(1).get();
+    if (!pending.empty) throw new HttpsError("already-exists", "Ya existe una invitación pendiente para ese email.");
+    const inviteRef = gymRef.collection("invites").doc();
+    const now = FieldValue.serverTimestamp();
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const actorName = String(manager.data.name || manager.data.email || "Admin");
+    const batch = db.batch();
+    batch.create(inviteRef, {gymId, name, email, role, trainerRole: role === "trainer" ? trainerRole : "trainer", status: "pending", createdByUid: manager.uid, createdByName: actorName, createdByEmail: normalizeProvisionEmail(manager.data.email), createdAt: now, updatedAt: now, expiresAt});
+    batch.create(gymRef.collection("audit_logs").doc(), {type: "invite_created", actorUid: manager.uid, actorName, actorEmail: normalizeProvisionEmail(manager.data.email), target: inviteRef.id, metadata: {email, role, trainerRole}, createdAt: now});
+    await batch.commit();
+    return {ok: true, inviteId: inviteRef.id};
+  } catch (error) {
+    throw callableError(error, "No se pudo crear la invitación.");
+  }
+});
+
+exports.revokeInviteSecure = onCall(async (request) => {
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const inviteId = String(request.data?.inviteId || "").trim();
+    if (!gymId || !inviteId) throw new HttpsError("invalid-argument", "Falta el gimnasio o la invitación.");
+    const manager = await assertProvisionManager(request, gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const inviteRef = gymRef.collection("invites").doc(inviteId);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) throw new HttpsError("not-found", "Invitación no encontrada.");
+    const invite = await assertDocumentBelongsToGym(inviteSnap, gymId, "Invitacion");
+    if (invite.status !== "pending") throw new HttpsError("failed-precondition", "La invitación ya no está pendiente.");
+    const now = FieldValue.serverTimestamp();
+    const actorName = String(manager.data.name || manager.data.email || "Admin");
+    const batch = db.batch();
+    batch.update(inviteRef, {status: "revoked", revokedByUid: manager.uid, revokedByName: actorName, revokedByEmail: normalizeProvisionEmail(manager.data.email), revokedAt: now, updatedAt: now});
+    batch.create(gymRef.collection("audit_logs").doc(), {type: "invite_revoked", actorUid: manager.uid, actorName, actorEmail: normalizeProvisionEmail(manager.data.email), target: inviteId, createdAt: now});
+    await batch.commit();
+    return {ok: true};
+  } catch (error) {
+    throw callableError(error, "No se pudo revocar la invitación.");
+  }
+});
+
+exports.markInviteExpiredSecure = onCall(async (request) => {
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const inviteId = String(request.data?.inviteId || "").trim();
+    if (!gymId || !inviteId) throw new HttpsError("invalid-argument", "Falta el gimnasio o la invitación.");
+    await assertProvisionManager(request, gymId);
+    const inviteRef = db.collection("gyms").doc(gymId).collection("invites").doc(inviteId);
+    const snapshot = await inviteRef.get();
+    if (!snapshot.exists) throw new HttpsError("not-found", "Invitación no encontrada.");
+    const invite = snapshot.data() || {};
+    if (invite.status !== "pending" || firestoreTimestampMillis(invite.expiresAt) > Date.now()) return {ok: true, changed: false};
+    await inviteRef.update({status: "expired", updatedAt: FieldValue.serverTimestamp()});
+    return {ok: true, changed: true};
+  } catch (error) {
+    throw callableError(error, "No se pudo caducar la invitación.");
+  }
+});
+
+exports.acceptInviteSecure = onCall(async (request) => {
+  try {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    const gymId = normalizeGymId(request.data?.gymId);
+    const inviteId = String(request.data?.inviteId || "").trim();
+    const name = String(request.data?.name || "").trim();
+    const tokenEmail = normalizeProvisionEmail(request.auth.token.email);
+    if (!gymId || !inviteId || name.length < 2) throw new HttpsError("invalid-argument", "Faltan datos de la invitación.");
+    const gymRef = db.collection("gyms").doc(gymId);
+    const inviteRef = gymRef.collection("invites").doc(inviteId);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) throw new HttpsError("not-found", "La invitación no existe.");
+    const invite = await assertDocumentBelongsToGym(inviteSnap, gymId, "Invitacion");
+    if (invite.status !== "pending") throw new HttpsError("failed-precondition", "La invitación ya no está pendiente.");
+    if (firestoreTimestampMillis(invite.expiresAt) <= Date.now()) {
+      await inviteRef.update({status: "expired", updatedAt: FieldValue.serverTimestamp()});
+      throw new HttpsError("deadline-exceeded", "La invitación ha caducado.");
+    }
+    if (!tokenEmail || normalizeProvisionEmail(invite.email) !== tokenEmail) throw new HttpsError("permission-denied", "El email no coincide con la invitación.");
+    const subscription = await activeSubscriptionWithLimits(gymId);
+    const role = String(invite.role || "user");
+    const limit = inviteRoleLimits(subscription, role);
+    const current = await currentMemberCount(gymRef, role);
+    if (current >= limit) throw new HttpsError("resource-exhausted", `El plan no permite más ${role === "user" ? "clientes" : "entrenadores"}.`);
+    const uid = request.auth.uid;
+    const now = FieldValue.serverTimestamp();
+    const trainerRole = String(invite.trainerRole || "trainer");
+    const memberData = {authUid: uid, name, email: tokenEmail, role, trainerRole, active: true, inviteId, createdAt: now, updatedAt: now};
+    await db.runTransaction(async (transaction) => {
+      const fresh = await transaction.get(inviteRef);
+      if (!fresh.exists || fresh.data()?.status !== "pending") throw new HttpsError("failed-precondition", "La invitación ya ha sido utilizada.");
+      transaction.create(db.collection("users").doc(uid), {uid, name, email: tokenEmail, role, trainerRole, gymId, active: true, acceptedInviteId: inviteId, createdAt: now, updatedAt: now});
+      transaction.create(gymRef.collection("members").doc(uid), memberData);
+      if (role === "trainer") transaction.create(gymRef.collection("trainers").doc(uid), memberData);
+      else transaction.create(gymRef.collection("clients").doc(uid), {...memberData, goal: "Objetivo pendiente", level: "Nuevo", accountStatus: "active"});
+      transaction.update(inviteRef, {status: "accepted", acceptedByUid: uid, acceptedAt: now, updatedAt: now});
+      transaction.create(gymRef.collection("audit_logs").doc(), {type: "invite_accepted", actorUid: uid, actorName: name, actorEmail: tokenEmail, target: inviteId, metadata: {role, trainerRole}, createdAt: now});
+    });
+    return {ok: true, role, trainerRole};
+  } catch (error) {
+    throw callableError(error, "No se pudo aceptar la invitación.");
+  }
+});
+
+
+
+function validateUpdateName(value) {
+  const name = String(value || "").trim();
+  if (name.length < 2 || name.length > 120) throw new HttpsError("invalid-argument", "El nombre no es válido.");
+  return name;
+}
+
+exports.updateClientSecure = onCall(async (request) => {
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const clientId = String(request.data?.clientId || "").trim();
+    const name = validateUpdateName(request.data?.name);
+    const email = normalizeProvisionEmail(request.data?.email);
+    const goal = String(request.data?.goal || "").trim() || "Objetivo pendiente";
+    if (!gymId || !clientId || !email || !email.includes("@")) throw new HttpsError("invalid-argument", "Faltan datos válidos del cliente.");
+    const manager = await assertProvisionManager(request, gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const clientRef = gymRef.collection("clients").doc(clientId);
+    const snapshot = await clientRef.get();
+    if (!snapshot.exists) throw new HttpsError("not-found", "Cliente no encontrado.");
+    const client = snapshot.data() || {};
+    const uid = String(client.authUid || "").trim();
+    if (email !== normalizeProvisionEmail(client.email)) {
+      const duplicate = await gymRef.collection("clients").where("email", "==", email).limit(1).get();
+      if (duplicate.docs.some((doc) => doc.id !== clientId)) throw new HttpsError("already-exists", "Ya existe otro cliente con ese email.");
+      if (uid) await getAuth().updateUser(uid, {email});
+    }
+    if (uid) await getAuth().updateUser(uid, {displayName: name});
+    const now = FieldValue.serverTimestamp();
+    const actorName = String(manager.data.name || manager.data.email || "Admin");
+    const batch = db.batch();
+    batch.update(clientRef, {name, email, goal, updatedBy: actorName, updatedByUid: manager.uid, updatedAt: now});
+    if (uid) {
+      batch.set(db.collection("users").doc(uid), {name, email, updatedAt: now}, {merge: true});
+      batch.set(gymRef.collection("members").doc(uid), {name, email, updatedAt: now}, {merge: true});
+    }
+    const routines = await gymRef.collection("routines").where("clientId", "==", clientId).get();
+    for (const routine of routines.docs) batch.update(routine.ref, {clientName: name, clientEmail: email, updatedBy: actorName, updatedByUid: manager.uid, updatedAt: now});
+    batch.create(gymRef.collection("activity").doc(), {type: "client_updated", target: name, targetId: clientId, targetEmail: email, user: actorName, userUid: manager.uid, userEmail: normalizeProvisionEmail(manager.data.email), metadata: {previousName: client.name || "", previousEmail: client.email || ""}, createdAt: now});
+    batch.create(gymRef.collection("audit_logs").doc(), {type: "client_updated_secure", actorUid: manager.uid, actorName, actorEmail: normalizeProvisionEmail(manager.data.email), target: clientId, metadata: {uid, previousEmail: client.email || "", email}, createdAt: now});
+    await batch.commit();
+    return {ok: true};
+  } catch (error) {
+    throw callableError(error, "No se pudo actualizar el cliente.");
+  }
+});
+
+exports.updateTrainerSecure = onCall(async (request) => {
+  try {
+    const gymId = normalizeGymId(request.data?.gymId);
+    const trainerUid = String(request.data?.trainerUid || "").trim();
+    const name = validateUpdateName(request.data?.name);
+    const trainerRole = String(request.data?.trainerRole || "trainer").trim();
+    if (!gymId || !trainerUid || !["trainer", "gym_admin"].includes(trainerRole)) throw new HttpsError("invalid-argument", "Datos de entrenador no válidos.");
+    const manager = await assertProvisionManager(request, gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const trainerRef = gymRef.collection("trainers").doc(trainerUid);
+    const snapshot = await trainerRef.get();
+    if (!snapshot.exists) throw new HttpsError("not-found", "Entrenador no encontrado.");
+    const trainer = snapshot.data() || {};
+    if (trainer.role === "owner") throw new HttpsError("failed-precondition", "No se puede modificar el rol del propietario.");
+    if (trainerRole === "gym_admin" && manager.data.role !== "owner") throw new HttpsError("permission-denied", "Solo el propietario puede nombrar administradores.");
+    if (trainer.trainerRole === "gym_admin" && manager.data.role !== "owner") throw new HttpsError("permission-denied", "Solo el propietario puede modificar administradores.");
+    await getAuth().updateUser(trainerUid, {displayName: name});
+    const now = FieldValue.serverTimestamp();
+    const actorName = String(manager.data.name || manager.data.email || "Admin");
+    const update = {name, trainerRole, updatedAt: now, updatedBy: actorName, updatedByUid: manager.uid};
+    const batch = db.batch();
+    batch.update(trainerRef, update);
+    batch.set(db.collection("users").doc(trainerUid), update, {merge: true});
+    batch.set(gymRef.collection("members").doc(trainerUid), update, {merge: true});
+    batch.create(gymRef.collection("audit_logs").doc(), {type: "trainer_updated_secure", actorUid: manager.uid, actorName, actorEmail: normalizeProvisionEmail(manager.data.email), target: trainerUid, metadata: {previousRole: trainer.trainerRole || "trainer", trainerRole}, createdAt: now});
+    await batch.commit();
+    return {ok: true};
+  } catch (error) {
+    throw callableError(error, "No se pudo actualizar el entrenador.");
+  }
+});
+
+exports.toggleTrainerStatusSecure = onCall(async (request) => {
+  try {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    const gymId = normalizeGymId(request.data?.gymId);
+    const trainerUid = String(request.data?.trainerUid || "").trim();
+    const active = request.data?.active === true;
+    if (!gymId || !trainerUid) throw new HttpsError("invalid-argument", "Falta el gimnasio o entrenador.");
+    if (trainerUid === request.auth.uid) throw new HttpsError("failed-precondition", "No puedes cambiar el estado de tu propia cuenta.");
+    const manager = await assertProvisionManager(request, gymId);
+    const gymRef = db.collection("gyms").doc(gymId);
+    const trainerRef = gymRef.collection("trainers").doc(trainerUid);
+    const snapshot = await trainerRef.get();
+    if (!snapshot.exists) throw new HttpsError("not-found", "Entrenador no encontrado.");
+    const trainer = snapshot.data() || {};
+    if (trainer.role === "owner") throw new HttpsError("failed-precondition", "No se puede desactivar al propietario.");
+    if (trainer.trainerRole === "gym_admin" && manager.data.role !== "owner") throw new HttpsError("permission-denied", "Solo el propietario puede cambiar el estado de un administrador.");
+    if (active) {
+      const subscription = await activeSubscriptionWithLimits(gymId);
+      const count = await gymRef.collection("trainers").where("active", "==", true).count().get();
+      if (count.data().count >= subscription.maxTrainers) throw new HttpsError("resource-exhausted", "El plan no permite activar más entrenadores.");
+    }
+    const now = FieldValue.serverTimestamp();
+    const batch = db.batch();
+    batch.update(trainerRef, {active, updatedAt: now});
+    batch.set(db.collection("users").doc(trainerUid), {active, updatedAt: now}, {merge: true});
+    batch.set(gymRef.collection("members").doc(trainerUid), {active, updatedAt: now}, {merge: true});
+    batch.create(gymRef.collection("audit_logs").doc(), {type: active ? "trainer_activated_secure" : "trainer_deactivated_secure", actorUid: manager.uid, actorName: String(manager.data.name || manager.data.email || "Admin"), actorEmail: normalizeProvisionEmail(manager.data.email), target: trainerUid, createdAt: now});
+    await batch.commit();
+    await getAuth().updateUser(trainerUid, {disabled: !active});
+    return {ok: true, active};
+  } catch (error) {
+    throw callableError(error, "No se pudo cambiar el estado del entrenador.");
+  }
+});

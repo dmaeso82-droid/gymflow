@@ -8,8 +8,9 @@ class AppCard extends StatelessWidget {
   final Gradient? gradient;
   final double radius;
   final bool elevated;
+  final bool outlined;
 
-  AppCard({
+  const AppCard({
     super.key,
     required this.child,
     this.margin,
@@ -18,23 +19,28 @@ class AppCard extends StatelessWidget {
     this.gradient,
     this.radius = 24,
     this.elevated = true,
+    this.outlined = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : const Color(0xFFE2E8F0);
+    final defaultSurface = isDark
+        ? const Color(0xFF111827).withValues(alpha: 0.72)
+        : Colors.white.withValues(alpha: 0.82);
+    final resolvedColor = gradient == null ? color ?? defaultSurface : null;
+    final borderColor = outlined
+        ? (isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0).withValues(alpha: 0.70))
+        : Colors.transparent;
     final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.28)
-        : const Color(0xFF0EA5E9).withValues(alpha: 0.10);
+        ? Colors.black.withValues(alpha: 0.20)
+        : const Color(0xFF0F172A).withValues(alpha: 0.055);
 
     return Container(
       margin: margin,
       decoration: BoxDecoration(
-        color: gradient == null ? color ?? theme.cardColor : null,
+        color: resolvedColor,
         gradient: gradient,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: borderColor),
@@ -42,8 +48,9 @@ class AppCard extends StatelessWidget {
             ? [
                 BoxShadow(
                   color: shadowColor,
-                  blurRadius: isDark ? 22 : 18,
-                  offset: const Offset(0, 10),
+                  blurRadius: isDark ? 22 : 28,
+                  spreadRadius: -8,
+                  offset: const Offset(0, 16),
                 ),
               ]
             : null,
@@ -53,6 +60,3 @@ class AppCard extends StatelessWidget {
     );
   }
 }
-
-
-
